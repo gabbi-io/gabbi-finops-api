@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block page_title %}Settings{% endblock %}
+{% block page_sub %}Configurações de apresentação da PoC (ex.: embed do Grafana real depois).{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Embed do Grafana</div>
+        <div class="card-sub">Cole aqui a URL de embed do dashboard real (quando estiver pronto).</div>
+      </div>
+      <a class="btn" href="{{ url_for('dashboard') }}">Voltar</a>
+    </div>
+    <div class="card-body">
+      <form method="post" class="form">
+        <div class="control">
+          <label>Grafana embed URL</label>
+          <input name="grafana_embed_url" placeholder="https://grafana.../d/..." value="{{ dataset.grafana_embed_url }}" />
+          <div class="help">Dica: use modo kiosk/embedded e permissões adequadas.</div>
+        </div>
+        <button class="btn primary" type="submit">Salvar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Notas</div>
+        <div class="card-sub">O que o cliente precisa entender na Fase 1.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <ul class="bullets">
+        {% for n in dataset.notes %}
+          <li>{{ n }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__FINOPS_STATE__ = {{ dataset|tojson }};
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block page_title %}BillingAccumulator{% endblock %}
+{% block page_sub %}Estado do balde (sobras). Fecha mínimo e gera ledger quando atingido.{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Accumulators</div>
+        <div class="card-sub">Pending tokens e close_count por balde (manual/automação).</div>
+      </div>
+      <a class="btn" href="{{ url_for('dashboard') }}">Voltar</a>
+    </div>
+    <div class="card-body">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Modelo</th>
+              <th>Chave do balde</th>
+              <th>Pending Tokens</th>
+              <th>Closes</th>
+              <th>Atualizado</th>
+            </tr>
+          </thead>
+          <tbody id="accTable">
+            {% for a in dataset.tables.accumulators %}
+            <tr>
+              <td><span class="tag {{ 'tag-manual' if a.bucket_type=='MANUAL' else 'tag-auto' }}">{{ a.bucket_type }}</span></td>
+              <td>{{ a.model }}</td>
+              <td class="mono">{{ a.bucket_key }}</td>
+              <td><b>{{ a.pending_tokens }}</b></td>
+              <td>{{ a.close_count }}</td>
+              <td>{{ a.updated_at }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="hint">
+        <b>Dica para demo:</b> selecione "Fake • Live" no Dashboard e clique em "Simular 1 hora" para ver o fechamento do mínimo acontecer.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Model Pricing (vigente)</div>
+        <div class="card-sub">Min tokens / custo mínimo (impacta o ledger).</div>
+      </div>
+      <a class="btn" href="{{ url_for('pricing') }}">Editar</a>
+    </div>
+    <div class="card-body">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>Model</th><th>Min Tokens</th><th>Min Cost</th></tr>
+          </thead>
+          <tbody id="pricingTable">
+            {% for p in dataset.tables.pricing %}
+            <tr>
+              <td>{{ p.model }}</td>
+              <td>{{ p.min_tokens }}</td>
+              <td><b>R$ {{ "%.2f"|format(p.min_cost) }}</b></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="hint">
+        Ao alterar pricing, o comportamento de fechamento (mínimo) muda — igual no produto real.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__FINOPS_STATE__ = {{ dataset|tojson }};
+</script>
+{% endblock %}

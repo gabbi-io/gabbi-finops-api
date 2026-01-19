@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block page_title %}Model Pricing{% endblock %}
+{% block page_sub %}Tabela de pricing mockada para demonstrar min_tokens/min_cost e impacto no ledger.{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Pricing vigente</div>
+        <div class="card-sub">Esse CRUD existe no produto real (Fase 1).</div>
+      </div>
+      <a class="btn" href="{{ url_for('dashboard') }}">Voltar</a>
+    </div>
+    <div class="card-body">
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Model</th><th>Min Tokens</th><th>Min Cost</th></tr></thead>
+          <tbody id="pricingTable">
+            {% for p in dataset.tables.pricing %}
+            <tr>
+              <td>{{ p.model }}</td>
+              <td>{{ p.min_tokens }}</td>
+              <td><b>R$ {{ "%.2f"|format(p.min_cost) }}</b></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="hint">
+        Após editar, volte ao Dashboard e clique em "Reset Live" + "Simular 1 hora" para ver o novo comportamento.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Editar pricing</div>
+        <div class="card-sub">Mock: persiste em arquivo state.json para demo.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="post" class="form">
+        <div class="row">
+          <div class="control">
+            <label>Model</label>
+            <input name="model" placeholder="ex: gpt-4o" required />
+          </div>
+          <div class="control">
+            <label>Min tokens</label>
+            <input name="min_tokens" type="number" min="1" placeholder="800" required />
+          </div>
+          <div class="control">
+            <label>Min cost</label>
+            <input name="min_cost" type="number" step="0.01" min="0" placeholder="0.80" required />
+          </div>
+        </div>
+        <button class="btn primary" type="submit">Salvar</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__FINOPS_STATE__ = {{ dataset|tojson }};
+</script>
+{% endblock %}

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>gabbi | FinOps (Fase 1)</title>
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/gabbi.css') }}"/>
+  <script defer src="{{ url_for('static', filename='js/finops.js') }}"></script>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">gabbi</div>
+      <div class="brand-sub">FinOps • Fase 1</div>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="muted">Tenant</div>
+      <div class="strong">Spread Tecnologia</div>
+      <div class="tiny">Custo auditável • Ledger como fonte</div>
+    </div>
+
+    <nav class="nav">
+      <a class="nav-item {{ 'active' if request.path.startswith('/finops') or request.path=='/' else '' }}" href="{{ url_for('dashboard') }}">
+        <span class="nav-ico">📊</span><span>Dashboard</span>
+      </a>
+      <a class="nav-item {{ 'active' if request.path.startswith('/ledger') else '' }}" href="{{ url_for('ledger') }}">
+        <span class="nav-ico">🧾</span><span>Ledger</span>
+      </a>
+      <a class="nav-item {{ 'active' if request.path.startswith('/interactions') else '' }}" href="{{ url_for('interactions') }}">
+        <span class="nav-ico">🧩</span><span>Interactions</span>
+      </a>
+      <a class="nav-item {{ 'active' if request.path.startswith('/accumulators') else '' }}" href="{{ url_for('accumulators') }}">
+        <span class="nav-ico">🪣</span><span>Accumulators</span>
+      </a>
+      <a class="nav-item {{ 'active' if request.path.startswith('/pricing') else '' }}" href="{{ url_for('pricing') }}">
+        <span class="nav-ico">🏷️</span><span>Model Pricing</span>
+      </a>
+      <a class="nav-item {{ 'active' if request.path.startswith('/settings') else '' }}" href="{{ url_for('settings') }}">
+        <span class="nav-ico">⚙️</span><span>Settings</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="tiny muted">Fonte</div>
+      <div class="pill">{{ dataset.data_source|replace('_',' ')|upper if dataset else '' }}</div>
+
+      <div style="height:10px"></div>
+      <div class="tiny muted">Cenário</div>
+      <div class="pill">{{ dataset.scenario|upper if dataset else '' }}</div>
+
+      <div class="version">vPoC-FinOps-1.0</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="page-title">{% block page_title %}FinOps{% endblock %}</div>
+        <div class="page-sub">{% block page_sub %}{% endblock %}</div>
+      </div>
+      <div class="topbar-right">
+        <div class="client-pill">Spread Tecnologia</div>
+        <div class="avatar">BR</div>
+      </div>
+    </header>
+
+    <section class="content">
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+
+</div>
+</body>
+</html>

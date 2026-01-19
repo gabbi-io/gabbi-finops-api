@@ -1,0 +1,20 @@
+[
+  {
+    "date": "2026-01-10",
+    "source": "MANUAL",
+    "model": "gpt-4o",
+    "amount": 1.20
+  },
+  {
+    "date": "2026-01-10",
+    "source": "AUTOMATION",
+    "model": "gpt-4o",
+    "amount": 3.80
+  },
+  {
+    "date": "2026-01-11",
+    "source": "AUTOMATION",
+    "model": "gpt-4.1",
+    "amount": 2.50
+  }
+]

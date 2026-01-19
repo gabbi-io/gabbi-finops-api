@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block page_title %}Interactions{% endblock %}
+{% block page_sub %}Log bruto (auditável). Não é custo financeiro.{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <div class="card-title">Interações recentes</div>
+      <div class="card-sub">Aqui o cliente entende “não é caixa preta”.</div>
+    </div>
+    <a class="btn" href="{{ url_for('dashboard') }}">Voltar</a>
+  </div>
+  <div class="card-body">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Origem</th>
+            <th>Modelo</th>
+            <th>Tokens</th>
+            <th>Actor</th>
+            <th>Conversation</th>
+            <th>Task</th>
+            <th>Flow</th>
+          </tr>
+        </thead>
+        <tbody id="interactionTable">
+          {% for r in dataset.tables.interaction_rows %}
+          <tr>
+            <td>{{ r.occurred_at }}</td>
+            <td><span class="tag {{ 'tag-manual' if r.source_type=='MANUAL' else 'tag-auto' }}">{{ r.source_type }}</span></td>
+            <td>{{ r.model }}</td>
+            <td>{{ r.tokens_total }}</td>
+            <td>{{ r.actor_type }}</td>
+            <td class="mono">{{ r.conversation_id }}</td>
+            <td>{{ r.task_id or '-' }}</td>
+            <td>{{ r.flow_id or '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__FINOPS_STATE__ = {{ dataset|tojson }};
+</script>
+{% endblock %}

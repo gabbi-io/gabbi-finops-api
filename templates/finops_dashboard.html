@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block page_title %}FinOps – Custo (Fase 1){% endblock %}
+{% block page_sub %}Funcionalidades idênticas ao produto final, usando dados mockados (PoC).{% endblock %}
+
+{% block content %}
+
+<div class="controls">
+  <form class="controls-row" method="get" action="{{ url_for('dashboard') }}">
+    <div class="control">
+      <label>Fonte (ainda fake)</label>
+      <select name="data_source">
+        <option value="fake_static" {{ 'selected' if dataset.data_source=='fake_static' else '' }}>Fake • Estático (apresentação)</option>
+        <option value="fake_live" {{ 'selected' if dataset.data_source=='fake_live' else '' }}>Fake • Live (simulação)</option>
+      </select>
+      <div class="help">Live permite simular entrada de eventos e ver o ledger fechar.</div>
+    </div>
+
+    <div class="control">
+      <label>Cenário</label>
+      <select name="scenario">
+        <option value="normal" {{ 'selected' if dataset.scenario=='normal' else '' }}>Normal</option>
+        <option value="growth" {{ 'selected' if dataset.scenario=='growth' else '' }}>Crescimento diário</option>
+        <option value="explosion" {{ 'selected' if dataset.scenario=='explosion' else '' }}>Explosão de custo (spike)</option>
+      </select>
+      <div class="help">Ótimo para storytelling com o cliente.</div>
+    </div>
+
+    <div class="control">
+      <label>Período</label>
+      <select name="days">
+        <option value="7" {{ 'selected' if dataset.days==7 else '' }}>7 dias</option>
+        <option value="30" {{ 'selected' if dataset.days==30 else '' }}>30 dias</option>
+        <option value="90" {{ 'selected' if dataset.days==90 else '' }}>90 dias</option>
+      </select>
+      <div class="help">Ajusta a agregação das séries.</div>
+    </div>
+
+    <div class="control">
+      <label>&nbsp;</label>
+      <button class="btn primary" type="submit">Aplicar</button>
+    </div>
+  </form>
+
+  <div class="controls-actions">
+    <button class="btn" data-action="simulate" data-steps="15">Simular 1 min</button>
+    <button class="btn" data-action="simulate" data-steps="120">Simular 1 hora</button>
+    <button class="btn danger" data-action="spike">Explodir custo</button>
+    <button class="btn ghost" data-action="reset">Reset Live</button>
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi">
+    <div class="kpi-label">Custo total</div>
+    <div class="kpi-value" id="kpiTotal">R$ {{ dataset.kpis.total_cost }}</div>
+    <div class="kpi-sub">Ledger: <span id="kpiLedgerRows">{{ dataset.kpis.ledger_rows }}</span> lançamentos</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Manual</div>
+    <div class="kpi-value" id="kpiManual">R$ {{ dataset.kpis.manual_cost }}</div>
+    <div class="kpi-sub">Sem rateio na Fase 1</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Automação</div>
+    <div class="kpi-value" id="kpiAutomation">R$ {{ dataset.kpis.automation_cost }}</div>
+    <div class="kpi-sub">Task/Flow (rastreável)</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Auditabilidade</div>
+    <div class="kpi-value" id="kpiInteractions">{{ dataset.kpis.interaction_rows }}</div>
+    <div class="kpi-sub">Interações no período</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Custo ao longo do tempo</div>
+        <div class="card-sub">Série diária (CostLedger).</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="chartCostByDay"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Manual vs Automação</div>
+        <div class="card-sub">Distribuição por origem.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="chartBySource"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Custo por modelo</div>
+        <div class="card-sub">Ajuda a identificar “model drift”.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="chartByModel"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Top Tasks / Flows (Automação)</div>
+        <div class="card-sub">Rastreabilidade: de onde veio o custo.</div>
+      </div>
+    </div>
+    <div class="card-body two-col">
+      <div>
+        <div class="tiny muted">Top Tasks</div>
+        <div class="list" id="topTasks">
+          {% for t in dataset.series.top_tasks %}
+            <div class="list-row"><span>{{ t.task_name }}</span><b>R$ {{ t.cost }}</b></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="tiny muted">Top Flows</div>
+        <div class="list" id="topFlows">
+          {% for f in dataset.series.top_flows %}
+            <div class="list-row"><span>{{ f.flow_name }}</span><b>R$ {{ f.cost }}</b></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px;">
+  <div class="card-head">
+    <div>
+      <div class="card-title">Grafana (slot para integração real)</div>
+      <div class="card-sub">Quando o dashboard real estiver pronto, cole a URL de embed em <a href="{{ url_for('settings') }}">Settings</a>.</div>
+    </div>
+    <div class="pill">{{ 'CONFIGURADO' if dataset.grafana_embed_url else 'NÃO CONFIGURADO' }}</div>
+  </div>
+  <div class="card-body">
+    {% if dataset.grafana_embed_url %}
+      <iframe class="grafana" src="{{ dataset.grafana_embed_url }}" loading="lazy"></iframe>
+    {% else %}
+      <div class="placeholder">
+        <div class="placeholder-title">Sem Grafana configurado</div>
+        <div class="placeholder-sub">A PoC já está preparada para embutir o dashboard real via iframe, sem mudar a UX.</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  window.__FINOPS_STATE__ = {{ dataset|tojson }};
+</script>
+
+{% endblock %}
