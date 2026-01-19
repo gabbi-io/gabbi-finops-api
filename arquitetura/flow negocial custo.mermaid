@@ -1,0 +1,39 @@
+sequenceDiagram
+  autonumber
+  actor U as Usuario/Colaborador
+  participant UI as Front GABBI (Web UI)
+  participant ORQ as Orquestradores (n8n/Airflow)
+  participant API as BFF / API GABBI
+  participant FIN as FinOps Service (Billing)
+  participant I as Interaction log bruto
+  participant BA as BillingAccumulator (balde)
+  participant MP as ModelPricing
+  participant CL as CostLedger (financeiro)
+  participant G as Grafana
+
+  Note over FIN: 1) "Aqui a ideia é simples: transformar custo de IA em algo financeiro e auditável."<br/>"Custo não pode ser sensação — precisa virar ledger, com rastreabilidade e mínimos de billing."
+
+  par Uso manual
+    U->>UI: Envia mensagem/ação
+    UI->>API: Chamada com evento + tokens
+  and Uso automatizado
+    ORQ->>API: Execução automatizada
+  end
+
+  API->>FIN: Evento de consumo (tokens, modelo, origem)
+
+  Note over FIN,I: 2) "Tudo começa nas Interactions: registramos cada uso, sem caixa preta."<br/>"Isso é a prova de auditoria do consumo (tokens, modelo, origem manual/automação)."
+  FIN->>I: 1) grava interaction (auditoria)
+
+  Note over FIN,BA: 3) "Depois vem o balde (Accumulator): acumulamos tokens até fechar o mínimo."<br/>"Isso reproduz o comportamento real de cobrança mínima: fecha quando atinge min_tokens."
+  FIN->>BA: 2) acumula tokens por balde
+  BA-->>FIN: min_tokens atingido? (fecha balde)
+
+  FIN->>MP: 3) aplica pricing (tabela de custos)
+  MP-->>FIN: custo calculado
+
+  Note over FIN,CL: 4) "Quando fecha, geramos o CostLedger: isso é o que vai para o Grafana."<br/>"Ou seja: custo vira linha financeira, pronta para métricas e dashboard."
+  FIN->>CL: 4) gera linha financeira (ledger)
+
+  Note over G: 5) "E o Grafana entra aqui: o layout já está preparado para embutir o painel real."<br/>"Quando estiver pronto, é só colar a URL do embed — UX não muda."
+  CL-->>G: Fonte de verdade p/ métricas (SQL/HTTP)

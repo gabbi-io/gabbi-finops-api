@@ -1,0 +1,88 @@
+{
+  "id": null,
+  "uid": "gabbi-finops-phase1",
+  "title": "GABBI FinOps - Fase 1",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "tags": ["gabbi", "finops", "fase1"],
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "type": "custom",
+        "label": "Tenant",
+        "query": "spread",
+        "current": { "text": "spread", "value": "spread" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Custo total (R$) por dia",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "select $__timeGroup(time,'1d') as time, sum(value) as value\nfrom finops.vw_cost_by_day\nwhere tenant_id = '$tenant' and $__timeFilter(time)\ngroup by 1\norder by 1;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Manual vs Automação (R$) por dia",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "select $__timeGroup(time,'1d') as time, metric, sum(value) as value\nfrom finops.vw_cost_by_source_day\nwhere tenant_id = '$tenant' and $__timeFilter(time)\ngroup by 1,2\norder by 1,2;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Custo por modelo (R$)",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "select metric as model, value as cost_brl\nfrom finops.vw_cost_by_model\nwhere tenant_id = '$tenant'\norder by value desc;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top Tasks (Automação)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "select metric as task_id, value as cost_brl\nfrom finops.vw_top_tasks\nwhere tenant_id = '$tenant'\norder by value desc\nlimit 10;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Ledger (drill-down)",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "postgres-appref" },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "select occurred_at, source_type, model, tokens_billed, amount_brl, collaborator_id, task_id, flow_id, idempotency_key\nfrom finops.vw_ledger_table\nwhere tenant_id = '$tenant' and $__timeFilter(occurred_at)\norder by occurred_at desc\nlimit 500;",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

@@ -238,8 +238,6 @@ curl http://localhost:8000/health
 > **A Fase 1 transforma custo em dado confiável.**  
 > A partir disso, ROI e governança deixam de ser discussão e viram cálculo.
 
-## Live Documentation:
-Carregar o arquivo portal_dx_gabbi_finops.html na pasta arquitetura para navegar e entender sobre a solução.
 ---
 
 © Gabbi / Spread — FinOps Core

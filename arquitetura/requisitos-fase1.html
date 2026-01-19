@@ -1,0 +1,1097 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Spread • Gabbi FinOps — Fase 1 (Plano Executivo Step-by-Step)</title>
+
+  <style>
+    :root{
+      --bg:#f4f5f9;
+      --card:#ffffff;
+      --border:#e6e7ef;
+      --text:#1f2430;
+      --muted:#6b7382;
+
+      --purple:#6c3cff;           /* gabbi */
+      --purple-2:#845bff;
+      --purple-soft:#efe7ff;
+
+      --orange:#ff8a00;           /* destaque */
+      --orange-2:#ffa032;
+
+      --ok:#1f9d63;
+      --warn:#f2b01e;
+      --bad:#e05656;
+
+      --shadow: 0 10px 24px rgba(15, 24, 40, .10);
+      --radius: 14px;
+
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      background:var(--bg);
+      color:var(--text);
+    }
+    a{color:inherit; text-decoration:none}
+    .layout{display:flex; min-height:100vh; overflow:hidden;}
+
+    /* Sidebar (template gabbi/spread) */
+    .sidebar{
+      width:320px;
+      background: linear-gradient(180deg, var(--purple-soft), #ffffff);
+      border-right: 1px solid var(--border);
+      padding: 18px 16px;
+      display:flex; flex-direction:column; gap:14px;
+      position:sticky; top:0; height:100vh;
+    }
+    .brand{padding:8px 10px}
+    .brand-logo{
+      font-size:44px; font-weight:900;
+      letter-spacing:-1px; color: var(--purple);
+      line-height: 1;
+    }
+    .brand-sub{margin-top:6px; color:var(--muted); font-size:13px}
+    .pill{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(108,60,255,.22);
+      background: rgba(108,60,255,.08);
+      color: var(--purple);
+      font-weight:800; font-size:12px;
+      width: max-content;
+    }
+    .sidebar-card{
+      background: rgba(255,255,255,.72);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:12px 12px;
+    }
+    .nav{display:flex; flex-direction:column; gap:8px; padding: 4px 2px}
+    .nav-item{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px;
+      border-radius: 12px;
+      color: var(--text);
+      border:1px solid transparent;
+    }
+    .nav-item:hover{background: rgba(108,60,255,.08); border-color: rgba(108,60,255,.18)}
+    .nav-item.active{background: rgba(108,60,255,.12); border-color: rgba(108,60,255,.28)}
+    .nav-ico{width:22px; text-align:center}
+    .tiny{font-size:12px}
+    .muted{color:var(--muted)}
+    .strong{font-weight:800}
+
+    .sidebar-footer{
+      margin-top:auto;
+      display:flex; flex-direction:column; gap:10px;
+      padding: 8px 2px;
+    }
+    .version{color:var(--muted); font-size:12px}
+
+    /* Main */
+    .main{flex:1; display:flex; flex-direction:column; overflow:hidden}
+    .topbar{
+      height: 70px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 0 20px;
+    }
+    .page-title{font-size:18px; font-weight:900}
+    .page-sub{font-size:13px; color:var(--muted); margin-top:4px}
+    .topbar-right{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    .client-pill{
+      border:1px solid var(--border);
+      background: #fff;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+    }
+    .avatar{
+      width:34px; height:34px; border-radius: 50%;
+      background: rgba(108,60,255,.12);
+      border:1px solid rgba(108,60,255,.22);
+      color: var(--purple);
+      display:flex; align-items:center; justify-content:center;
+      font-weight:900;
+    }
+
+    .content{
+      padding: 16px 18px 18px;
+      overflow:auto;
+    }
+
+    .card{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding: 12px 12px;
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-title{font-weight:900}
+    .card-sub{font-size:12px; color:var(--muted); margin-top:4px}
+    .card-body{padding: 12px 12px}
+    .grid{
+      display:grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap:12px;
+    }
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+
+    .btn{
+      border:1px solid var(--border);
+      background:#fff;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:800;
+      font-size:13px;
+      display:inline-flex; align-items:center; gap:8px;
+    }
+    .btn:hover{border-color: rgba(108,60,255,.28)}
+    .btn.primary{
+      background: linear-gradient(180deg, var(--orange-2), var(--orange));
+      border-color: rgba(255,138,0,.22);
+      color:#fff;
+    }
+    .btn.ghost{
+      background: rgba(108,60,255,.06);
+      border-color: rgba(108,60,255,.18);
+      color: var(--purple);
+    }
+    .btn.danger{
+      background: rgba(224,86,86,.12);
+      border-color: rgba(224,86,86,.22);
+      color: #b12e2e;
+    }
+
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:12px;
+      margin-top:12px;
+    }
+    .kpi{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 12px 12px;
+    }
+    .kpi-label{font-size:12px; color:var(--muted)}
+    .kpi-value{font-size:20px; font-weight:900; margin-top:6px}
+    .kpi-sub{font-size:12px; color:var(--muted); margin-top:6px}
+
+    .progress-wrap{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 10px;
+      border:1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(108,60,255,.03);
+    }
+    .progress{
+      height:10px; border-radius:999px;
+      background: rgba(108,60,255,.10);
+      overflow:hidden;
+      flex:1;
+      border:1px solid rgba(108,60,255,.18);
+    }
+    .progress > div{
+      height:100%;
+      width:0%;
+      background: linear-gradient(90deg, rgba(108,60,255,.9), rgba(255,138,0,.9));
+    }
+    .tag{
+      display:inline-flex; align-items:center; justify-content:center;
+      font-weight:900;
+      font-size:11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border:1px solid var(--border);
+      white-space:nowrap;
+    }
+    .tag-ok{background: rgba(31,157,99,.12); border-color: rgba(31,157,99,.22); color:#0f6a42}
+    .tag-scope{background: rgba(108,60,255,.12); border-color: rgba(108,60,255,.22); color:var(--purple)}
+    .tag-demo{background: rgba(255,138,0,.12); border-color: rgba(255,138,0,.22); color:#a85a00}
+
+    .stepper{
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .step{
+      border:1px solid var(--border);
+      border-radius: 12px;
+      background:#fff;
+      padding: 10px 10px;
+      cursor:pointer;
+    }
+    .step:hover{border-color: rgba(108,60,255,.28)}
+    .step.active{
+      background: rgba(108,60,255,.06);
+      border-color: rgba(108,60,255,.28);
+    }
+    .step-top{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+    }
+    .step-title{font-weight:900}
+    .step-sub{font-size:12px; color:var(--muted); margin-top:4px}
+    .step-meta{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+    .mono{font-family:var(--mono)}
+
+    .quote{
+      border-left: 4px solid rgba(255,138,0,.75);
+      background: rgba(255,138,0,.06);
+      padding: 10px 12px;
+      border-radius: 12px;
+    }
+    .bullets{margin:0; padding-left:18px; color:var(--muted); font-size:13px}
+    .callout{
+      border: 1px dashed rgba(108,60,255,.35);
+      background: rgba(108,60,255,.04);
+      padding: 12px 12px;
+      border-radius: 12px;
+    }
+    .linkrow{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    .link{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:#fff;
+      font-weight:800;
+      font-size:13px;
+    }
+    .link:hover{border-color: rgba(108,60,255,.28)}
+    .toggle{
+      display:flex; align-items:center; gap:10px;
+      border:1px solid var(--border);
+      background:#fff;
+      padding: 8px 10px;
+      border-radius: 12px;
+    }
+    .toggle input{transform:scale(1.1)}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+
+    .table-wrap{overflow:auto; border:1px solid var(--border); border-radius: 12px}
+    table{width:100%; border-collapse:collapse; font-size:13px; min-width: 820px}
+    th, td{padding: 10px 10px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap}
+    th{font-size:12px; color:var(--muted); background: rgba(108,60,255,.04)}
+    .sep{height:10px}
+
+    @media (max-width: 1100px){
+      .layout{flex-direction:column}
+      .sidebar{width:auto; height:auto; position:relative}
+      .grid, .grid2{grid-template-columns: 1fr}
+      .kpis{grid-template-columns: 1fr 1fr}
+    }
+  </style>
+</head>
+
+<body>
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">gabbi</div>
+      <div class="brand-sub">Spread • FinOps — Fase 1 (Executivo)</div>
+      <div style="height:10px"></div>
+      <span class="pill">Plano Step-by-Step</span>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="muted tiny">Objetivo da Fase 1</div>
+      <div class="strong" style="margin-top:4px">Mensurar custo (auditável) e exibir no Grafana</div>
+      <div class="tiny muted" style="margin-top:6px">Base: Interaction → Accumulator → CostLedger → Grafana</div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <a href="#overview" class="nav-item active"><span class="nav-ico">🧭</span><span>Visão executiva</span></a>
+      <a href="#stepby" class="nav-item"><span class="nav-ico">🪜</span><span>Step-by-Step</span></a>
+      <a href="#requisitos" class="nav-item"><span class="nav-ico">🧩</span><span>Requisitos atendidos</span></a>
+      <a href="#entregas" class="nav-item"><span class="nav-ico">📦</span><span>Entregas & marcos</span></a>
+      <a href="#riscos" class="nav-item"><span class="nav-ico">⚠️</span><span>Riscos & controles</span></a>
+      <a href="#demo" class="nav-item"><span class="nav-ico">🎙️</span><span>Roteiro de demo</span></a>
+    </nav>
+
+    <div class="sidebar-card">
+      <div class="row">
+        <span class="tag tag-scope">Fase 1</span>
+        <span class="tag tag-demo">Executivo</span>
+      </div>
+      <div class="sep"></div>
+      <div class="toggle">
+        <input id="modeTech" type="checkbox"/>
+        <label for="modeTech" class="tiny">
+          Mostrar detalhes técnicos (RDA)
+        </label>
+      </div>
+      <div class="tiny muted" style="margin-top:8px">
+        Dica: deixe desligado para negócio / demandantes. Ligue para arquitetura/ti.
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="tiny muted">Links da PoC (opcional)</div>
+      <div class="row" style="gap:8px">
+        <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 /finops</a>
+        <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 /ledger</a>
+      </div>
+      <div class="version">v1 • Template Gabbi/Spread</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="page-title">FinOps — Fase 1 (Plano de Trabalho Executivo)</div>
+        <div class="page-sub">Entregas incrementais para gerar valor rápido: custo → Grafana → (fases seguintes: receita/ROI → rateio por área)</div>
+      </div>
+      <div class="topbar-right">
+        <div class="client-pill">Spread • Gabbi • FinOps</div>
+        <div class="avatar">SP</div>
+      </div>
+    </header>
+
+    <section class="content">
+      <!-- Overview -->
+      <section id="overview" class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🧭 Visão executiva da Fase 1</div>
+            <div class="card-sub">O que será entregue, por que isso importa e como o negócio enxerga valor.</div>
+          </div>
+          <div class="row">
+            <button class="btn ghost" onclick="window.print()">🖨️ Imprimir / PDF</button>
+            <button class="btn primary" onclick="goTo('stepby')">Começar Step-by-Step</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="kpi-label">Valor para o negócio</div>
+              <div class="kpi-value">Custo confiável</div>
+              <div class="kpi-sub">Sai do “achismo” → vira ledger auditável</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Entrega incremental</div>
+              <div class="kpi-value">Grafana pronto</div>
+              <div class="kpi-sub">Dashboards e alertas desde a Fase 1</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Governança</div>
+              <div class="kpi-value">Rastreabilidade</div>
+              <div class="kpi-sub">Manual vs Automação, por modelo, por fluxo</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Base do ROI</div>
+              <div class="kpi-value">Preparado</div>
+              <div class="kpi-sub">Fase 2: Receita/ROI em cima do ledger</div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="grid">
+            <div class="card" style="box-shadow:none;">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">O que entregamos na Fase 1</div>
+                  <div class="card-sub">Em termos que negócio entende.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <ul class="bullets">
+                  <li><b>Mensuração de custo</b> por consumo de IA (com regras mínimas de cobrança).</li>
+                  <li><b>Fonte de custo financeira</b> (CostLedger) pronta para Grafana.</li>
+                  <li><b>Transparência e auditoria</b>: Interactions (log de uso) e rastreio por automação.</li>
+                  <li><b>Storytelling controlado</b>: simular crescimento e explosão para validar governança.</li>
+                  <li><b>Preparação do embed do Grafana</b> sem refazer UX.</li>
+                </ul>
+
+                <div class="callout" style="margin-top:10px">
+                  <div class="strong">Mensagem-chave</div>
+                  <div class="tiny muted" style="margin-top:6px">
+                    “Na Fase 1, o custo vira dado confiável e visual. A partir daí, ROI e rateio ficam fáceis de plugar.”
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="box-shadow:none;">
+              <div class="card-head">
+                
+              </div>
+              <div class="card-body">
+                <div class="quote">
+                  <div class="strong">Narrativa </div>
+                  <div class="tiny muted" style="margin-top:6px">
+                    “O Dashboard mostra custo e tendências. O Ledger prova que o custo é financeiro.
+                    E as Interactions/Accumulators provam rastreabilidade e regra mínima.”
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Dashboard</a>
+                  <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 Ledger</a>
+                  <a class="link" href="http://127.0.0.1:5000/interactions" target="_blank">🧩 Interactions</a>
+                  <a class="link" href="http://127.0.0.1:5000/accumulators" target="_blank">🪣 Accumulators</a>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="progress-wrap">
+                  <div class="tag tag-scope">Progresso da apresentação</div>
+                  <div class="progress"><div id="progressBar"></div></div>
+                  <div class="tiny muted" id="progressTxt">0%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- Step-by-step -->
+      <section id="stepby" class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🪜 Step-by-Step s</div>
+            <div class="card-sub">Um roteiro dinâmico para apresentar ao negócio e demandantes — com o que, por que, evidência e próximo passo.</div>
+          </div>
+          <div class="row">
+            <button class="btn" onclick="prevStep()">⬅️ Anterior</button>
+            <button class="btn primary" onclick="nextStep()">Próximo ➡️</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="grid">
+            <div>
+              <div class="stepper" id="stepper"></div>
+            </div>
+
+            <div>
+              <div class="card" style="box-shadow:none;">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title" id="detailTitle">—</div>
+                    <div class="card-sub" id="detailSub">—</div>
+                  </div>
+                  <span class="tag tag-demo" id="detailTag">DEMO</span>
+                </div>
+
+                <div class="card-body">
+                  <div class="quote" id="detailNarrative"></div>
+
+                  <div class="sep"></div>
+
+                  <div class="strong">O que vamos mostrar</div>
+                  <ul class="bullets" id="detailShow"></ul>
+
+                  <div class="sep"></div>
+
+                  <div class="strong">Exemplo POC</div>
+                  <div class="linkrow" id="detailLinks"></div>
+
+                  <div class="sep"></div>
+
+                  <div class="callout tech-only" style="display:none">
+                    <div class="strong">Detalhes técnicos (RDA)</div>
+                    <div class="tiny muted" id="detailTech"></div>
+                  </div>
+
+                  <div class="sep"></div>
+
+                  <div class="strong">Próximo passo</div>
+                  <div class="tiny muted" id="detailNext"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- Requisitos -->
+      <section id="requisitos" class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🧩 Requisitos atendidos (Fase 1)</div>
+            <div class="card-sub">Mapa executivo: requisito → como atendemos → onde aparece.</div>
+          </div>
+          <button class="btn ghost" onclick="goTo('demo')">Ir para roteiro de demo</button>
+        </div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Requisito (Fase 1)</th>
+                  <th>Como atendemos</th>
+                  <th>Evidência / Tela</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="reqTable"></tbody>
+            </table>
+          </div>
+          <div class="sep"></div>
+          <div class="callout">
+            <div class="tiny muted" style="margin-top:6px">
+              “Tudo que está aqui é incremental. A Fase 1 cria a base de custo. Depois plugamos Receita/ROI e rateio por área sem reinventar.”
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- Entregas -->
+      <section id="entregas" class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">📦 Entregas & marcos</div>
+            <div class="card-sub">O que sai primeiro, o que valida com o negócio, e o que fica pronto para produção.</div>
+          </div>
+          <button class="btn" onclick="expandAllMilestones()">Expandir tudo</button>
+        </div>
+        <div class="card-body" id="milestones"></div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- Riscos -->
+      <section id="riscos" class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">⚠️ Riscos & controles (visão executiva)</div>
+            <div class="card-sub">O que pode dar errado — e como evitamos impacto no negócio.</div>
+          </div>
+          <span class="tag tag-scope">Governança</span>
+        </div>
+        <div class="card-body">
+          <div class="grid2" id="riskGrid"></div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+    
+
+      <div class="sep"></div>
+
+      <div class="tiny muted" style="padding: 0 2px 20px;">
+        *Este HTML é um artefato de apresentação executiva (template Gabbi/Spread). 
+      </div>
+
+    </section>
+  </main>
+</div>
+
+<script>
+  // ====== Config (edite aqui se quiser) ======
+  const POC_BASE = "http://127.0.0.1:5000";
+
+  const STEPS = [
+    {
+      id: "S1",
+      title: "Contexto e objetivo",
+      sub: "Por que a Fase 1 existe e qual valor ela entrega imediatamente.",
+      tag: "Executivo",
+      narrative: `
+        <div class="strong">Narrativa</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “Hoje, custo de IA costuma ser invisível. Na Fase 1, a gente torna custo <b>confiável, auditável e visual</b>.
+          Isso dá base para governança e para ROI nas próximas fases.”
+        </div>
+      `,
+      show: [
+        "Apresentar objetivo: custo → Grafana",
+        "Reforçar incremental: Fase 2 = Receita/ROI, Fase 3 = Rateio por área",
+        "Alinhar o que NÃO entra agora (receita/área)"
+      ],
+      links: [
+        {label:"📊 Abrir Dashboard", href:`${POC_BASE}/finops`},
+      ],
+      tech: "RDA: escopo Fase 1 focado em CostLedger e observabilidade; mantém separação Interaction/Accumulator/Ledger.",
+      next: "Dúvidas: quais perguntas o dashboard precisa responder no dia 1?"
+    },
+    {
+      id: "S2",
+      title: "Transparência: Interaction (auditabilidade)",
+      sub: "Toda chamada vira registro. Nada é caixa preta.",
+      tag: "Controle",
+      narrative: `
+        <div class="strong">Narrativa sugerida</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “Primeiro, registramos o uso. Isso é trilha de auditoria: origem (manual/automação), modelo, tokens e contexto.
+          Sem isso, custo vira discussão. Com isso, custo vira dado.”
+        </div>
+      `,
+      show: [
+        "Abrir Interactions e mostrar origem e modelo",
+        "Mostrar tokens e conversation_id",
+        "Explicar: ledger é derivado do uso + regras"
+      ],
+      links: [
+        {label:"🧩 Abrir Interactions", href:`${POC_BASE}/interactions`},
+        {label:"📊 Voltar ao Dashboard", href:`${POC_BASE}/finops`}
+      ],
+      tech: "RDA: InteractionEvent como fonte de auditoria; persistência e idempotência por evento e tenant.",
+      next: "Dúvidas: quais campos de auditoria são obrigatórios (LGPD/Compliance)?"
+    },
+    {
+      id: "S3",
+      title: "Regra mínima: BillingAccumulator (baldes)",
+      sub: "Acumula tokens até fechar o mínimo (min_tokens).",
+      tag: "Billing",
+      narrative: `
+        <div class="strong">Narrativa sugerida</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “O custo real não é linear: existe mínimo. Então nós acumulamos tokens por ‘balde’ e só geramos custo quando fecha o mínimo.
+          Isso evita distorções e reflete o mundo real.”
+        </div>
+      `,
+      show: [
+        "Abrir Accumulators e mostrar pending_tokens/close_count",
+        "Explicar baldes (manual vs automação, por modelo, por task quando automação)",
+        "Voltar ao Dashboard e simular para ver evolução"
+      ],
+      links: [
+        {label:"🪣 Abrir Accumulators", href:`${POC_BASE}/accumulators`},
+        {label:"📊 Dashboard (simular)", href:`${POC_BASE}/finops`}
+      ],
+      tech: "RDA: bucketização por (tenant, source_type, model, task_id|collaborator_id). Fechamento em loop quando pending >= min_tokens.",
+      next: "Alinhar regra de fechamento com financeiro (mínimo por modelo / política interna)."
+    },
+    {
+      id: "S4",
+      title: "Custo financeiro: CostLedger (pronto para Grafana)",
+      sub: "Ledger é a fonte de verdade do custo (valor em R$).",
+      tag: "Valor",
+      narrative: `
+        <div class="strong">Narrativa sugerida</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “Aqui o custo vira financeiro: cada fechamento gera um lançamento com valor em R$.
+          É esse dado que o Grafana lê. Resultado: custo consolidado e comparável.”
+        </div>
+      `,
+      show: [
+        "Abrir Ledger e destacar amount/tokens_billed",
+        "Mostrar task/flow quando automação (rastreabilidade)",
+        "Explicar: com isso, KPI e alertas ficam fáceis no Grafana"
+      ],
+      links: [
+        {label:"🧾 Abrir Ledger", href:`${POC_BASE}/ledger`},
+        {label:"📊 Dashboard (KPIs)", href:`${POC_BASE}/finops`}
+      ],
+      tech: "RDA: CostLedgerEntry com idempotency_key e consistência por fechamento; pronto para métricas e queries no Grafana.",
+      next: "Definir queries do Grafana: custo/dia, custo por origem, custo por modelo, top tasks/flows."
+    },
+    {
+      id: "S5",
+      title: "Governança: Manual vs Automação + Top Tasks/Flows",
+      sub: "Enxerga onde está o custo e onde atacar primeiro.",
+      tag: "Governança",
+      narrative: `
+        <div class="strong">Narrativa sugerida</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “Quando o custo sobe, a pergunta vira ‘por quê’ e ‘onde’. Aqui separamos manual e automação,
+          e mostramos quais tasks/flows mais consomem. Isso orienta priorização e otimização.”
+        </div>
+      `,
+      show: [
+        "No Dashboard: gráfico manual vs automação",
+        "No Dashboard: Top Tasks/Flows",
+        "Se necessário: abrir Ledger e mostrar task_id/flow_id"
+      ],
+      links: [
+        {label:"📊 Ver gráficos no Dashboard", href:`${POC_BASE}/finops`},
+        {label:"🧾 Ver task/flow no Ledger", href:`${POC_BASE}/ledger`}
+      ],
+      tech: "RDA: dimensão de rastreio em ledger (task_id/flow_id) para drill-down e accountability.",
+      next: "Definir ‘metas’ (SLO) e alertas: threshold de custo/dia e spike detection."
+    },
+    {
+      id: "S6",
+      title: "Controle de pricing (min_tokens/min_cost)",
+      sub: "Troca de parâmetro muda o ledger (governança).",
+      tag: "Controle",
+      narrative: `
+        <div class="strong">Narrativa sugerida</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “Pricing é governança. Se muda mínimo/custo por modelo, o fechamento muda.
+          Isso permite simular cenário, aprovar regras e depois só trocar a fonte real.”
+        </div>
+      `,
+      show: [
+        "Abrir Pricing e alterar um modelo",
+        "Voltar ao Dashboard (modo live) e simular",
+        "Mostrar impacto no Ledger"
+      ],
+      links: [
+        {label:"🏷️ Abrir Pricing", href:`${POC_BASE}/pricing`},
+        {label:"📊 Dashboard (simular)", href:`${POC_BASE}/finops`},
+        {label:"🧾 Ledger", href:`${POC_BASE}/ledger`}
+      ],
+      tech: "RDA: tabela/serviço de pricing com versionamento e auditoria; recalcular somente projeções, não histórico em produção.",
+      next: "Definir governança: quem aprova pricing e como versiona."
+    },
+    {
+      id: "S7",
+      title: "Grafana: layout e embed prontos",
+      sub: "Integração real entra depois sem refazer UX.",
+      tag: "Observabilidade",
+      narrative: `
+        <div class="strong">Narrativa sugerida</div>
+        <div class="tiny muted" style="margin-top:6px">
+          “A Fase 1 já nasce com a ‘casca’ pronta: quando o dashboard real estiver publicado,
+          a gente embute aqui e mantém a experiência. Sem retrabalho.”
+        </div>
+      `,
+      show: [
+        "Abrir Settings e mostrar campo Grafana embed URL",
+        "Voltar ao Dashboard e mostrar slot do iframe",
+        "Reforçar: dados reais entram depois (sem mudar o produto)"
+      ],
+      links: [
+        {label:"⚙️ Settings (Grafana)", href:`${POC_BASE}/settings`},
+        {label:"📊 Dashboard (slot Grafana)", href:`${POC_BASE}/finops`}
+      ],
+      tech: "RDA: Grafana como camada de visualização; queries baseadas em CostLedger + métricas agregadas.",
+      next: "Combinar com Infra: autenticação do Grafana, permissões e modo embed/kiosk."
+    }
+  ];
+
+  const REQS = [
+    {r:"Mensurar custo e ter saída para Grafana", how:"Gerar CostLedger (R$) + séries no Dashboard", where:"/ledger + /finops + /settings", status:"Atendido"},
+    {r:"Auditabilidade (não ser caixa preta)", how:"Registrar Interaction para cada evento", where:"/interactions", status:"Atendido"},
+    {r:"Respeitar mínimo de cobrança", how:"Accumulator fecha quando pending >= min_tokens", where:"/accumulators + /ledger", status:"Atendido"},
+    {r:"Separar manual vs automação", how:"source_type em ledger + gráficos", where:"/finops + /ledger", status:"Atendido"},
+    {r:"Rastrear custo por automação", how:"task_id / flow_id (Top Tasks/Flows)", where:"/finops + /ledger", status:"Atendido"},
+    {r:"Simular crescimento e explosão (storytelling)", how:"Modo live + botões de simulação/spike", where:"/finops", status:"Atendido"},
+    {r:"Iframe do Grafana real depois", how:"Slot configurável via Settings", where:"/settings + /finops", status:"Atendido"}
+  ];
+
+  const MILESTONES = [
+    {
+      title: "Marco 1 — Protótipo validado com negócio (PoC)",
+      sub: "Telas e narrativa aprovadas: KPI, gráficos, drill-down e rastreio.",
+      items: [
+        "Dashboard com KPIs e gráficos",
+        "Ledger como fonte de custo",
+        "Interactions/Accumulators explicando rastreio e mínimo",
+        "Storytelling (crescimento/spike)"
+      ]
+    },
+    {
+      title: "Marco 2 — Back-end pronto para dados reais ",
+      sub: "Troca do mock pela coleta real e persistência adequada.",
+      items: [
+        "Conectores de coleta (billing/usage) e normalização",
+        "Persistência (DB) e idempotência",
+        "Jobs/rotinas de agregação para Grafana",
+        "RBAC básico e trilha de auditoria"
+      ]
+    },
+    {
+      title: "Marco 3 — Grafana publicado ",
+      sub: "Queries e painel do Grafana rodando em ambiente alvo.",
+      items: [
+        "Dashboard Grafana com queries de custo",
+        "Alertas de spike e thresholds",
+        "Embed (kiosk) no Gabbi/Portal",
+        "Documentação (RDA + Runbook)"
+      ]
+    }
+  ];
+
+  const RISKS = [
+    {
+      title: "Risco: custo “não bater” com percepção",
+      level: "Médio",
+      control: "Ledger como fonte financeira + regra mínima transparente; validação por amostragem."
+    },
+    {
+      title: "Risco: ausência de rastreio por automação",
+      level: "Médio",
+      control: "Obrigatoriedade de task_id/flow_id em automações; dashboards Top Tasks/Flows."
+    },
+    {
+      title: "Risco: autenticação/embeds do Grafana",
+      level: "Médio",
+      control: "Alinhar com Infra (SSO/permissions) e política de embed (kiosk)."
+    },
+    {
+      title: "Risco: performance e volume",
+      level: "Baixo/Médio",
+      control: "Agregações diárias, índices, particionamento e retenção; queries por janela."
+    }
+  ];
+
+  const DEMO_CHECKLIST = [
+    {label:"Abrir Dashboard e mostrar KPIs/gráficos", link:`${POC_BASE}/finops`},
+    {label:"Mostrar Interactions (auditabilidade)", link:`${POC_BASE}/interactions`},
+    {label:"Mostrar Accumulators (mínimo de cobrança)", link:`${POC_BASE}/accumulators`},
+    {label:"Mostrar Ledger (custo em R$)", link:`${POC_BASE}/ledger`},
+    {label:"Mostrar Top Tasks/Flows e Manual vs Automação", link:`${POC_BASE}/finops`},
+    {label:"Alterar Pricing e simular impacto", link:`${POC_BASE}/pricing`},
+    {label:"Mostrar Settings (slot Grafana)", link:`${POC_BASE}/settings`}
+  ];
+
+  // ====== State ======
+  let currentStep = 0;
+  let techMode = false;
+
+  // ====== UI Helpers ======
+  function goTo(id){
+    document.getElementById(id)?.scrollIntoView({behavior:"smooth", block:"start"});
+  }
+
+  function setActiveNav(){
+    const sections = ["overview","stepby","requisitos","entregas","riscos","demo"];
+    const y = window.scrollY + 120;
+    let active = "overview";
+    for (const s of sections){
+      const el = document.getElementById(s);
+      if (!el) continue;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      if (top <= y) active = s;
+    }
+    document.querySelectorAll(".nav-item").forEach(a => a.classList.remove("active"));
+    const link = document.querySelector(`.nav-item[href="#${active}"]`);
+    if (link) link.classList.add("active");
+  }
+
+  function pct(){
+    const p = Math.round(((currentStep+1) / STEPS.length) * 100);
+    document.getElementById("progressBar").style.width = `${p}%`;
+    document.getElementById("progressTxt").textContent = `${p}%`;
+  }
+
+  // ====== Render Stepper ======
+  function renderStepper(){
+    const stepper = document.getElementById("stepper");
+    stepper.innerHTML = "";
+
+    STEPS.forEach((s, idx) => {
+      const el = document.createElement("div");
+      el.className = "step" + (idx===currentStep ? " active" : "");
+      el.onclick = () => { currentStep = idx; renderStepper(); renderDetail(); pct(); };
+
+      el.innerHTML = `
+        <div class="step-top">
+          <div>
+            <div class="step-title">${idx+1}. ${s.title}</div>
+            <div class="step-sub">${s.sub}</div>
+            <div class="step-meta">
+              <span class="tag tag-scope">${s.id}</span>
+              <span class="tag tag-demo">${s.tag}</span>
+              <span class="tag tag-ok">Fase 1</span>
+            </div>
+          </div>
+          <div class="mono muted tiny">#${s.id}</div>
+        </div>
+      `;
+      stepper.appendChild(el);
+    });
+  }
+
+  function renderDetail(){
+    const s = STEPS[currentStep];
+    document.getElementById("detailTitle").textContent = `${currentStep+1}. ${s.title}`;
+    document.getElementById("detailSub").textContent = s.sub;
+    document.getElementById("detailTag").textContent = s.tag;
+    document.getElementById("detailNarrative").innerHTML = s.narrative;
+
+    const show = document.getElementById("detailShow");
+    show.innerHTML = "";
+    s.show.forEach(item=>{
+      const li = document.createElement("li");
+      li.textContent = item;
+      show.appendChild(li);
+    });
+
+    const links = document.getElementById("detailLinks");
+    links.innerHTML = "";
+    (s.links||[]).forEach(l=>{
+      const a = document.createElement("a");
+      a.className = "link";
+      a.href = l.href;
+      a.target = "_blank";
+      a.textContent = l.label;
+      links.appendChild(a);
+    });
+
+    document.getElementById("detailNext").textContent = s.next;
+
+    const techBox = document.querySelector(".tech-only");
+    const techTxt = document.getElementById("detailTech");
+    if (techMode){
+      techBox.style.display = "block";
+      techTxt.textContent = s.tech || "—";
+    } else {
+      techBox.style.display = "none";
+    }
+  }
+
+  function nextStep(){
+    currentStep = Math.min(currentStep+1, STEPS.length-1);
+    renderStepper(); renderDetail(); pct();
+    goTo("stepby");
+  }
+  function prevStep(){
+    currentStep = Math.max(currentStep-1, 0);
+    renderStepper(); renderDetail(); pct();
+    goTo("stepby");
+  }
+
+  // ====== Requisitos table ======
+  function renderReqs(){
+    const tbody = document.getElementById("reqTable");
+    tbody.innerHTML = "";
+    REQS.forEach(r=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${r.r}</b></td>
+        <td class="muted">${r.how}</td>
+        <td class="mono">${r.where}</td>
+        <td><span class="tag tag-ok">${r.status}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ====== Milestones ======
+  function renderMilestones(){
+    const host = document.getElementById("milestones");
+    host.innerHTML = "";
+    MILESTONES.forEach((m, idx)=>{
+      const details = document.createElement("details");
+      details.style.border = "1px solid var(--border)";
+      details.style.borderRadius = "12px";
+      details.style.background = "rgba(108,60,255,.02)";
+      details.style.padding = "10px 10px";
+      details.style.marginBottom = "10px";
+      details.open = idx === 0;
+
+      const items = m.items.map(x=>`<li>${x}</li>`).join("");
+      details.innerHTML = `
+        <summary style="cursor:pointer; font-weight:900; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span>${m.title}</span>
+          <span class="tag tag-scope">Marco ${idx+1}</span>
+        </summary>
+        <div class="tiny muted" style="margin-top:8px;">${m.sub}</div>
+        <div class="sep"></div>
+        <ul class="bullets">${items}</ul>
+      `;
+      host.appendChild(details);
+    });
+  }
+  function expandAllMilestones(){
+    document.querySelectorAll("#milestones details").forEach(d=>d.open = true);
+  }
+
+  // ====== Risks ======
+  function renderRisks(){
+    const grid = document.getElementById("riskGrid");
+    grid.innerHTML = "";
+    RISKS.forEach(r=>{
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.boxShadow = "none";
+      div.innerHTML = `
+        <div class="card-head">
+          <div>
+            <div class="card-title">${r.title}</div>
+            <div class="card-sub">Nível: <b>${r.level}</b></div>
+          </div>
+          <span class="tag tag-demo">controle</span>
+        </div>
+        <div class="card-body">
+          <div class="quote">
+            <div class="strong">Como mitigamos</div>
+            <div class="tiny muted" style="margin-top:6px">${r.control}</div>
+          </div>
+        </div>
+      `;
+      grid.appendChild(div);
+    });
+  }
+
+  // ====== Demo checklist ======
+  function renderDemo(){
+    const host = document.getElementById("demoChecklist");
+    host.innerHTML = "";
+    DEMO_CHECKLIST.forEach((d, idx)=>{
+      const box = document.createElement("div");
+      box.className = "sidebar-card";
+      box.style.boxShadow = "none";
+      box.innerHTML = `
+        <div class="row" style="justify-content:space-between">
+          <div class="strong">Passo ${idx+1}</div>
+          <span class="tag tag-demo">demo</span>
+        </div>
+        <div class="sep"></div>
+        <div class="row" style="align-items:flex-start">
+          <input type="checkbox" id="ck${idx}" style="transform:scale(1.2); margin-top:2px"/>
+          <label for="ck${idx}" class="tiny muted" style="cursor:pointer">${d.label}</label>
+        </div>
+        <div class="sep"></div>
+        <a class="link" href="${d.link}" target="_blank">🔗 Abrir tela</a>
+      `;
+      host.appendChild(box);
+    });
+  }
+  function resetChecklist(){
+    document.querySelectorAll("#demoChecklist input[type='checkbox']").forEach(cb=>cb.checked=false);
+  }
+
+  // ====== Tech mode toggle ======
+  document.getElementById("modeTech").addEventListener("change", (e)=>{
+    techMode = !!e.target.checked;
+    renderDetail();
+  });
+
+  // ====== Init ======
+  function init(){
+    renderStepper();
+    renderDetail();
+    renderReqs();
+    renderMilestones();
+    renderRisks();
+    renderDemo();
+    pct();
+
+    window.addEventListener("scroll", setActiveNav, {passive:true});
+    setActiveNav();
+  }
+  init();
+</script>
+</body>
+</html>

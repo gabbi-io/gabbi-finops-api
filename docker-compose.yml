@@ -1,0 +1,90 @@
+services:
+  gabbi-finops-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gabbi-finops-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # App
+      LOG_LEVEL: "INFO"
+      DATA_DIR: "/data"
+
+      # DB (Grafana + API usando o mesmo Postgres)
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_NAME: "${POSTGRES_DB:-gabbi}"
+      DB_USER: "${POSTGRES_USER:-gabbi}"
+      DB_PASSWORD: "${POSTGRES_PASSWORD:-gabbi}"
+
+      # Azure OpenAI (vem do .env)
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY}"
+      AZURE_OPENAI_API_VERSION: "${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}"
+      AZURE_OPENAI_DEPLOYMENT: "${AZURE_OPENAI_DEPLOYMENT}"
+
+      # opcional
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-*}"
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gabbi-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: gabbi-finops-postgres
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-gabbi}"
+      POSTGRES_USER: "${POSTGRES_USER:-gabbi}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-gabbi}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Executa SQLs iniciais no primeiro boot do volume
+      - ./grafana/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gabbi} -d ${POSTGRES_DB:-gabbi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - gabbi-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gabbi-finops-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # Provisioning (datasources + dashboards providers)
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      # Dashboards JSON importáveis automaticamente
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gabbi-network
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  grafana_data:
+
+networks:
+  gabbi-network:
+    driver: bridge

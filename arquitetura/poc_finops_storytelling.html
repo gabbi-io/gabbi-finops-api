@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>gabbi • FinOps (Fase 1) — Storytelling & Requisitos (PoC)</title>
+
+  <style>
+    :root{
+      --bg:#f4f5f9;
+      --card:#ffffff;
+      --border:#e6e7ef;
+      --text:#1f2430;
+      --muted:#6b7382;
+
+      --purple:#6c3cff;
+      --purple-2:#845bff;
+      --purple-soft:#efe7ff;
+
+      --orange:#ff8a00;
+      --orange-2:#ffa032;
+
+      --ok:#1f9d63;
+      --warn:#f2b01e;
+      --bad:#e05656;
+
+      --shadow: 0 10px 24px rgba(15, 24, 40, .10);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    *{box-sizing:border-box}
+    body{ margin:0; font-family:var(--sans); background:var(--bg); color:var(--text); }
+    a{ color:inherit; }
+    .layout{ display:flex; min-height:100vh; }
+    .sidebar{
+      width:320px; padding:18px 16px;
+      background: linear-gradient(180deg, var(--purple-soft), #fff);
+      border-right:1px solid var(--border);
+      display:flex; flex-direction:column; gap:14px;
+      position:sticky; top:0; height:100vh;
+    }
+    .brand{ padding:8px 10px; }
+    .logo{ font-size:44px; font-weight:900; letter-spacing:-1px; color:var(--purple); }
+    .sub{ margin-top:-6px; font-size:13px; color:var(--muted); }
+    .pill{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(108,60,255,.22);
+      background: rgba(108,60,255,.08);
+      color:var(--purple); font-weight:800; font-size:12px;
+      width:max-content;
+    }
+    .card{
+      background:var(--card); border:1px solid var(--border);
+      border-radius:var(--radius); box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding:12px 12px; border-bottom:1px solid var(--border);
+      display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+    }
+    .card-title{ font-weight:900; }
+    .card-sub{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .card-body{ padding:12px 12px; }
+    .nav{ display:flex; flex-direction:column; gap:8px; padding: 4px 2px; }
+    .nav a{
+      text-decoration:none; padding:10px 12px; border-radius:12px;
+      border:1px solid transparent; display:flex; gap:10px; align-items:center;
+    }
+    .nav a:hover{ background: rgba(108,60,255,.08); border-color: rgba(108,60,255,.18); }
+    .nav .ico{ width:22px; text-align:center; }
+    .main{ flex:1; padding:18px; }
+    .top{
+      background:#fff; border:1px solid var(--border); border-radius:var(--radius);
+      box-shadow:var(--shadow); padding:14px 14px;
+      display:flex; justify-content:space-between; gap:12px; align-items:flex-start;
+    }
+    .h1{ font-size:18px; font-weight:900; }
+    .muted{ color:var(--muted); }
+    .tiny{ font-size:12px; }
+    .btn{
+      border:1px solid var(--border); background:#fff; color:var(--text);
+      padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800; font-size:13px;
+    }
+    .btn:hover{ border-color: rgba(108,60,255,.28); }
+    .btn.primary{
+      background: linear-gradient(180deg, var(--orange-2), var(--orange));
+      border-color: rgba(255,138,0,.22);
+      color:#fff;
+    }
+    .btn.ghost{
+      background: rgba(108,60,255,.06);
+      border-color: rgba(108,60,255,.18);
+      color: var(--purple);
+    }
+    .grid{
+      display:grid; grid-template-columns: 1fr 1fr;
+      gap:12px; margin-top:12px;
+    }
+    .grid-1{ display:grid; grid-template-columns: 1fr; gap:12px; margin-top:12px; }
+    .tag{
+      display:inline-flex; align-items:center; justify-content:center;
+      font-weight:900; font-size:11px; padding:4px 8px;
+      border-radius:999px; border:1px solid var(--border);
+    }
+    .tag-ok{ background: rgba(31,157,99,.12); border-color: rgba(31,157,99,.22); color:#0f6a42; }
+    .tag-scope{ background: rgba(108,60,255,.12); border-color: rgba(108,60,255,.22); color: var(--purple); }
+    .tag-demo{ background: rgba(255,138,0,.12); border-color: rgba(255,138,0,.22); color:#a85a00; }
+    .mono{ font-family:var(--mono); }
+    .kbd{
+      font-family:var(--mono);
+      font-size:12px;
+      background: rgba(108,60,255,.06);
+      border:1px solid rgba(108,60,255,.18);
+      padding:2px 6px; border-radius:8px;
+    }
+    .list{ display:flex; flex-direction:column; gap:10px; }
+    details{
+      border:1px solid var(--border); border-radius:12px;
+      background: rgba(108,60,255,.02);
+      padding:10px 10px;
+    }
+    summary{
+      cursor:pointer; font-weight:900;
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
+    summary::-webkit-details-marker{ display:none; }
+    .cols{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px; }
+    .quote{
+      border-left:4px solid rgba(255,138,0,.7);
+      padding: 10px 12px;
+      background: rgba(255,138,0,.06);
+      border-radius: 12px;
+    }
+    .steps{
+      margin:0; padding-left:18px; color:var(--muted); font-size:13px;
+    }
+    .req{
+      display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
+      border:1px solid var(--border); border-radius:12px; padding:10px 10px; background:#fff;
+    }
+    .req-left{ flex:1; }
+    .req-title{ font-weight:900; }
+    .req-sub{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .req-meta{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .linkrow{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .link{
+      text-decoration:none;
+      display:inline-flex; gap:8px; align-items:center;
+      padding:8px 10px; border-radius:12px; border:1px solid var(--border);
+      background:#fff; font-weight:800; font-size:13px;
+    }
+    .link:hover{ border-color: rgba(108,60,255,.28); }
+    .split{
+      display:grid; grid-template-columns: 1.25fr 0.75fr;
+      gap:12px;
+    }
+    .check{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 10px;
+      border:1px solid var(--border); border-radius:12px;
+      background:#fff;
+    }
+    .check input{ transform: scale(1.2); }
+    .footer{
+      margin-top:auto; color:var(--muted); font-size:12px; padding: 8px 2px;
+    }
+    @media (max-width: 1100px){
+      .layout{ flex-direction:column; }
+      .sidebar{ width:auto; height:auto; position:relative; }
+      .grid, .cols, .split{ grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">gabbi</div>
+      <div class="sub">FinOps • Fase 1 — Storytelling (PoC)</div>
+      <div style="height:8px"></div>
+      <div class="pill">Roteiro + Requisitos + Telas</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Links da PoC</div>
+          <div class="card-sub">Ajuste o host se necessário.</div>
+        </div>
+        <span class="tag tag-scope">POC</span>
+      </div>
+      <div class="card-body">
+        <div class="list">
+          <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Dashboard <span class="mono tiny muted">/finops</span></a>
+          <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 Ledger <span class="mono tiny muted">/ledger</span></a>
+          <a class="link" href="http://127.0.0.1:5000/interactions" target="_blank">🧩 Interactions <span class="mono tiny muted">/interactions</span></a>
+          <a class="link" href="http://127.0.0.1:5000/accumulators" target="_blank">🪣 Accumulators <span class="mono tiny muted">/accumulators</span></a>
+          <a class="link" href="http://127.0.0.1:5000/pricing" target="_blank">🏷️ Model Pricing <span class="mono tiny muted">/pricing</span></a>
+          <a class="link" href="http://127.0.0.1:5000/settings" target="_blank">⚙️ Settings (Grafana) <span class="mono tiny muted">/settings</span></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Como usar na apresentação</div>
+          <div class="card-sub">Escolha um roteiro e siga as âncoras.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="nav">
+          <a href="#roteiro-executivo"><span class="ico">🎙️</span><span>Roteiro executivo (5 min)</span></a>
+          <a href="#roteiro-tecnico"><span class="ico">🧠</span><span>Roteiro técnico (10–12 min)</span></a>
+          <a href="#mapa-requisitos"><span class="ico">🧩</span><span>Mapa: Requisito → Tela → Narrativa</span></a>
+          <a href="#checklist-demo"><span class="ico">✅</span><span>Checklist de demo</span></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      vPoC-FinOps-1.0 • HTML de storytelling (apresentação)
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <div class="top">
+      <div>
+        <div class="h1">FinOps (Fase 1) — “Custo auditável” com saída pronta para Grafana</div>
+        <div class="muted tiny" style="margin-top:6px;">
+          Objetivo: demonstrar ao cliente <b>como cada requisito é atendido</b>, conectando <b>tela + narrativa + evidência</b>.
+        </div>
+        <div class="muted tiny" style="margin-top:6px;">
+          Conceito central: <span class="kbd">Interaction</span> → <span class="kbd">Accumulator</span> → <span class="kbd">CostLedger</span> → <span class="kbd">Grafana</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn ghost" onclick="window.print()">🖨️ Imprimir / PDF</button>
+        <a class="btn primary" href="#mapa-requisitos">📌 Ver mapa de requisitos</a>
+      </div>
+    </div>
+
+    <!-- Executive script -->
+    <section id="roteiro-executivo" class="grid-1">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🎙️ Roteiro executivo (5 minutos)</div>
+            <div class="card-sub">Fala pronta, com “passo de tela” para ancorar o cliente.</div>
+          </div>
+          <span class="tag tag-demo">DEMO</span>
+        </div>
+        <div class="card-body split">
+          <div>
+            <div class="quote">
+              <b>1) “Aqui a ideia é simples: transformar custo de IA em algo financeiro e auditável.”</b><br/>
+              <span class="muted tiny">
+                “Custo não pode ser sensação — precisa virar ledger, com rastreabilidade e mínimos de billing.”
+              </span>
+            </div>
+
+            <div class="quote" style="margin-top:10px;">
+              <b>2) “Tudo começa nas Interactions: registramos cada uso, sem caixa preta.”</b><br/>
+              <span class="muted tiny">
+                “Isso é a prova de auditoria do consumo (tokens, modelo, origem manual/automação).”
+              </span>
+            </div>
+
+            <div class="quote" style="margin-top:10px;">
+              <b>3) “Depois vem o balde (Accumulator): acumulamos tokens até fechar o mínimo.”</b><br/>
+              <span class="muted tiny">
+                “Isso reproduz o comportamento real de cobrança mínima: fecha quando atinge min_tokens.”
+              </span>
+            </div>
+
+            <div class="quote" style="margin-top:10px;">
+              <b>4) “Quando fecha, geramos o CostLedger: isso é o que vai para o Grafana.”</b><br/>
+              <span class="muted tiny">
+                “Ou seja: custo vira linha financeira, pronta para métricas e dashboard.”
+              </span>
+            </div>
+
+            <div class="quote" style="margin-top:10px;">
+              <b>5) “E o Grafana entra aqui: o layout já está preparado para embutir o painel real.”</b><br/>
+              <span class="muted tiny">
+                “Quando estiver pronto, é só colar a URL do embed — UX não muda.”
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <div class="card" style="box-shadow:none;">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Sequência de telas</div>
+                  <div class="card-sub">Clique e siga na hora.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <ol class="steps">
+                  <li><a href="http://127.0.0.1:5000/finops" target="_blank"><b>Dashboard</b></a>: mostrar KPIs + gráficos</li>
+                  <li>No Dashboard: <b>Fake Live</b> → “Reset Live” → “Simular 1 hora”</li>
+                  <li><a href="http://127.0.0.1:5000/interactions" target="_blank"><b>Interactions</b></a>: provar auditabilidade</li>
+                  <li><a href="http://127.0.0.1:5000/accumulators" target="_blank"><b>Accumulators</b></a>: mostrar “baldes” e sobras</li>
+                  <li><a href="http://127.0.0.1:5000/ledger" target="_blank"><b>Ledger</b></a>: mostrar linhas financeiras</li>
+                  <li><a href="http://127.0.0.1:5000/pricing" target="_blank"><b>Pricing</b></a>: alterar min_tokens e repetir simulação</li>
+                  <li><a href="http://127.0.0.1:5000/settings" target="_blank"><b>Settings</b></a>: mostrar slot do Grafana iframe</li>
+                </ol>
+                <div style="margin-top:10px;" class="muted tiny">
+                  Dica: finalize com “Explodir custo” para storytelling e “Top Tasks/Flows” para governança.
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:12px; box-shadow:none;">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Fechamento (1 frase)</div>
+                  <div class="card-sub">Para encerrar bonito.</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="quote">
+                  <b>“A Fase 1 entrega custo auditável e pronto para Grafana; na Fase 2 entramos com receita/ROI e na Fase 3 rateio por área.”</b>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Technical script -->
+    <section id="roteiro-tecnico" class="grid-1">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🧠 Roteiro técnico (10–12 minutos)</div>
+            <div class="card-sub">Fala pronta para explicar arquitetura/funcionamento e “por que isso vira Grafana”.</div>
+          </div>
+          <span class="tag tag-scope">FASE 1</span>
+        </div>
+
+        <div class="card-body">
+          <details open>
+            <summary>
+              1) Conceito: por que “custo” não é o token — é o ledger
+              <span class="tag tag-ok">fundamento</span>
+            </summary>
+            <div class="cols">
+              <div class="quote">
+                <b>Fala sugerida:</b><br/>
+                “Tokens são consumo técnico. O que o negócio precisa é <b>custo financeiro consolidado</b>.
+                Por isso a Fase 1 termina em <b>CostLedger</b>: o ledger é o dado mestre do custo e vira Grafana.”
+              </div>
+              <div>
+                <ul class="steps">
+                  <li>Abrir <b>Ledger</b> e mostrar colunas (<span class="mono">amount</span>, <span class="mono">tokens_billed</span>, <span class="mono">source_type</span>).</li>
+                  <li>Voltar no <b>Dashboard</b> e mostrar “Custo total / Manual / Automação”.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              2) Auditabilidade: Interaction como evidência
+              <span class="tag tag-ok">controle</span>
+            </summary>
+            <div class="cols">
+              <div class="quote">
+                <b>Fala sugerida:</b><br/>
+                “Aqui a gente tira a sensação de caixa preta: toda chamada gera uma <b>Interaction</b>.
+                Mesmo antes de virar custo, já existe rastreio por origem, modelo e contexto.”
+              </div>
+              <div>
+                <ul class="steps">
+                  <li>Abrir <b>Interactions</b>.</li>
+                  <li>Mostrar campos: origem manual/automação, modelo, tokens, conversation_id.</li>
+                  <li>Conectar: “o ledger é derivado disso, com mínimos e fechamento”.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              3) Mínimo de billing: Accumulator (baldes) e fechamento
+              <span class="tag tag-ok">billing</span>
+            </summary>
+            <div class="cols">
+              <div class="quote">
+                <b>Fala sugerida:</b><br/>
+                “O ‘segredo’ do custo real é o mínimo. Então nós acumulamos tokens por bucket
+                até fechar o mínimo (min_tokens) e então geramos o ledger. Isso replica o mundo real.”
+              </div>
+              <div>
+                <ul class="steps">
+                  <li>Abrir <b>Accumulators</b>.</li>
+                  <li>Mostrar <span class="mono">pending_tokens</span> e <span class="mono">close_count</span>.</li>
+                  <li>Voltar no Dashboard: clicar “Simular 1 hora” e ver close_count mudar.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              4) Pricing controlável: mudanças afetam o ledger
+              <span class="tag tag-ok">governança</span>
+            </summary>
+            <div class="cols">
+              <div class="quote">
+                <b>Fala sugerida:</b><br/>
+                “Pricing é governança. Se eu ajusto min_tokens/min_cost, o comportamento do fechamento muda.
+                Isso permite simular cenários, aprovar regras e depois só trocar a fonte do dado.”
+              </div>
+              <div>
+                <ul class="steps">
+                  <li>Abrir <b>Model Pricing</b>.</li>
+                  <li>Alterar um modelo (ex.: min_tokens e custo).</li>
+                  <li>Voltar ao Dashboard → “Reset Live” → “Simular 1 hora”.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              5) Storytelling: crescimento diário e explosão de custo
+              <span class="tag tag-demo">demo</span>
+            </summary>
+            <div class="cols">
+              <div class="quote">
+                <b>Fala sugerida:</b><br/>
+                “Agora eu provo a necessidade do FinOps: quando há crescimento ou um spike,
+                o painel mostra onde está o custo e em qual automação (task/flow).”
+              </div>
+              <div>
+                <ul class="steps">
+                  <li>No Dashboard: selecionar cenário “Explosão”.</li>
+                  <li>Clicar <b>“Explodir custo”</b>.</li>
+                  <li>Mostrar “Top Tasks/Flows”.</li>
+                  <li>Abrir Ledger e mostrar linhas novas.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              6) Saída Grafana: slot de embed pronto
+              <span class="tag tag-ok">observabilidade</span>
+            </summary>
+            <div class="cols">
+              <div class="quote">
+                <b>Fala sugerida:</b><br/>
+                “A interface já nasce preparada para o Grafana real: quando os dados reais estiverem coletados,
+                embutimos o dashboard sem refazer UX.”
+              </div>
+              <div>
+                <ul class="steps">
+                  <li>Abrir <b>Settings</b>.</li>
+                  <li>Mostrar campo “Grafana embed URL”.</li>
+                  <li>Voltar no Dashboard e mostrar o card Grafana (slot).</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Requirement map -->
+    <section id="mapa-requisitos" class="grid-1">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🧩 Mapa — Requisito → Tela → Narrativa → Evidência</div>
+            <div class="card-sub">Use isso como “checklist de atendimento” durante a demo.</div>
+          </div>
+          <span class="tag tag-scope">Fase 1</span>
+        </div>
+
+        <div class="card-body">
+          <div class="list">
+
+            <!-- R1 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R1 — Mensurar custo e disponibilizar para dashboard (Grafana)</div>
+                <div class="req-sub">O custo não é estimativa: vira ledger (valor financeiro).</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-scope">CostLedger</span>
+                  <span class="tag tag-demo">Dashboard</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “Nós transformamos consumo em <b>custo financeiro consolidado</b>.
+                    O que o Grafana lê é o <b>CostLedger</b>, não o log bruto.”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Dashboard: KPI “Custo total”.</li>
+                      <li>Ledger: coluna <span class="mono">amount</span>.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Abrir Dashboard</a>
+                  <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 Abrir Ledger</a>
+                  <a class="link" href="http://127.0.0.1:5000/settings" target="_blank">⚙️ Grafana slot</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- R2 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R2 — Auditabilidade (não ser caixa preta)</div>
+                <div class="req-sub">Toda chamada gera Interaction com origem, modelo, tokens e contexto.</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-scope">Interaction</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “Se alguém perguntar <i>‘de onde veio esse custo?’</i> a resposta começa aqui.
+                    Interactions é a trilha de auditoria.”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Interactions: origem Manual/Automação.</li>
+                      <li>Tokens e modelo por evento.</li>
+                      <li>conversation_id para rastreio.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/interactions" target="_blank">🧩 Abrir Interactions</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- R3 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R3 — Respeitar mínimo de cobrança (min_tokens/min_cost)</div>
+                <div class="req-sub">Accumulator acumula tokens e fecha o mínimo gerando ledger.</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-scope">BillingAccumulator</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “O custo real não é linear. Existe mínimo. Então usamos ‘baldes’ por origem/modelo,
+                    acumulamos e só então viramos custo financeiro.”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Accumulators: pending_tokens e close_count.</li>
+                      <li>Dashboard Live: simular e ver closes aumentarem.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/accumulators" target="_blank">🪣 Abrir Accumulators</a>
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Simular no Dashboard</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- R4 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R4 — Separar Manual vs Automação</div>
+                <div class="req-sub">Permite governança e direcionar otimizações (onde vale mexer primeiro).</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-scope">source_type</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “Aqui a gente enxerga o que é usuário humano e o que é automação rodando sozinha.
+                    Isso é base de governança e priorização.”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Dashboard: gráfico “Manual vs Automação”.</li>
+                      <li>Ledger: coluna source_type.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Ver gráfico</a>
+                  <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 Ver source_type</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- R5 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R5 — Rastrear custo por automação (task/flow)</div>
+                <div class="req-sub">Mostra de onde veio o gasto: “Top Tasks” e “Top Flows”.</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-scope">task_id / flow_id</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “Quando o custo sobe, a pergunta é: <b>qual automação</b>?
+                    Aqui eu consigo apontar o culpado (e medir o benefício depois).”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Dashboard: Top Tasks/Flows.</li>
+                      <li>Ledger: colunas task_id e flow_id.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Ver Top Tasks/Flows</a>
+                  <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 Ver task/flow</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- R6 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R6 — Simular crescimento diário e explosão de custo (storytelling)</div>
+                <div class="req-sub">Cria “efeito uau” e mostra por que governança é necessária.</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-demo">demo</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “Agora eu provo o risco: um spike muda a curva e eu consigo ver de onde veio,
+                    sem perder rastreabilidade.”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Dashboard (Fake Live): botão “Explodir custo”.</li>
+                      <li>Curva diária e Top Tasks/Flows mudam.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Fazer spike no Dashboard</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- R7 -->
+            <div class="req">
+              <div class="req-left">
+                <div class="req-title">R7 — Preparar embed do Grafana real </div>
+                <div class="req-sub">Quando existir painel real, cola a URL e pronto.</div>
+                <div class="req-meta">
+                  <span class="tag tag-ok">atendido</span>
+                  <span class="tag tag-scope">iframe</span>
+                </div>
+
+                <div class="cols">
+                  <div class="quote">
+                    <b>Narrativa:</b><br/>
+                    “Isso aqui acelera a entrega: a UX já está pronta. Só troca a fonte do dado e embute o painel.”
+                  </div>
+                  <div>
+                    <b class="tiny">Evidência na tela</b>
+                    <ul class="steps">
+                      <li>Settings: campo “Grafana embed URL”.</li>
+                      <li>Dashboard: card de Grafana aparece configurado.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="linkrow">
+                  <a class="link" href="http://127.0.0.1:5000/settings" target="_blank">⚙️ Configurar Grafana</a>
+                  <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Ver card Grafana</a>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div style="margin-top:12px;" class="muted tiny">
+            Observação: este mapa reflete a Fase 1 (custo). Fase 2 = Receita/ROI. Fase 3 = Rateio por área.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo checklist -->
+    <section id="checklist-demo" class="grid-1">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-title">✅ Checklist de demo (use como “placar” na apresentação)</div>
+            <div class="card-sub">Marque em tempo real enquanto apresenta. Ajuda a mostrar domínio e cobertura.</div>
+          </div>
+          <button class="btn" onclick="clearChecks()">Limpar</button>
+        </div>
+
+        <div class="card-body">
+          <div class="grid">
+            <div class="check"><input type="checkbox"/><div><b>Dashboard</b> exibiu KPIs e gráficos de custo</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Fake Live</b> ativado + “Reset Live”</div></div>
+            <div class="check"><input type="checkbox"/><div>“<b>Simular 1 hora</b>” gerou novas interações e ledger</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Interactions</b>: origem/modelo/tokens/conversation_id</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Accumulators</b>: pending_tokens e close_count explicados</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Ledger</b>: amount / tokens_billed / idempotency_key</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Pricing</b> alterado e comportamento mudou (mínimo)</div></div>
+            <div class="check"><input type="checkbox"/><div>“<b>Explodir custo</b>” executado (storytelling)</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Top Tasks/Flows</b> mostrados como rastreio de automação</div></div>
+            <div class="check"><input type="checkbox"/><div><b>Settings</b>: explicado slot de embed do Grafana</div></div>
+          </div>
+
+          <div style="margin-top:12px;" class="quote">
+            <b>Frase final sugerida:</b><br/>
+            “Hoje provamos custo auditável e pronto para Grafana. Próximo passo é ligar a fonte real e evoluir para Receita/ROI e rateio por área.”
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  function clearChecks(){
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+sequenceDiagram
+  autonumber
+  participant S as Source
+  participant F as FinOps_Service
+  participant I as Interaction
+  participant BA as BillingAccumulator
+  participant MP as ModelPricing
+  participant CL as CostLedger
+
+  S->>F: evento(tokens, modelo)
+  F->>I: insert interaction
+  F->>MP: select pricing vigente
+  F->>BA: lock balde
+  F->>BA: soma tokens
+
+  alt tokens < minimo
+    F-->>S: ok sem ledger
+  else tokens >= minimo
+    loop enquanto >= minimo
+      F->>BA: subtrai minimo
+      alt manual
+        F->>CL: insert ledger manual
+      else automacao
+        F->>CL: insert ledger rateado
+      end
+    end
+    F->>BA: update acumulador
+    F-->>S: ok ledger gerado
+  end

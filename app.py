@@ -17,6 +17,10 @@ def _save(state):
     sim.save_state(state)
 
 
+@app.get("/health")
+def health():
+    return jsonify(status="ok"), 200
+
 @app.route("/")
 def home():
     return redirect(url_for("dashboard"))

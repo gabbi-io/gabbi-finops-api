@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GABBI – FinOps Core (Fase 1) | C4 + Fluxo</title>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#0f1a2b; --text:#e6eefc; --muted:#a9b6d3;
+      --border:#22314d; --accent:#5da9ff; --ok:#1f9d63; --warn:#f2b01e;
+      --shadow: 0 10px 24px rgba(0,0,0,.35);
+      --radius: 14px;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    body{ margin:0; background:var(--bg); color:var(--text); }
+    header{
+      position:sticky; top:0; z-index:10;
+      background:rgba(11,18,32,.86); backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+    .wrap{ max-width:1200px; margin:0 auto; padding:18px 16px; }
+    .top{
+      display:flex; gap:12px; align-items:center; justify-content:space-between;
+      flex-wrap:wrap;
+    }
+    .title{
+      display:flex; flex-direction:column; gap:4px;
+    }
+    h1{ margin:0; font-size:18px; letter-spacing:.2px; }
+    .sub{ color:var(--muted); font-size:13px; }
+    .actions{ display:flex; gap:10px; flex-wrap:wrap; }
+    .btn{
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(93,169,255,.18), rgba(93,169,255,.06));
+      color:var(--text);
+      padding:9px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-size:13px;
+      box-shadow: var(--shadow);
+    }
+    .btn:active{ transform: translateY(1px); }
+    main{ padding:18px 0 48px; }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
+    @media (min-width: 980px){
+      .grid{ grid-template-columns: 1fr 1fr; }
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card header{
+      position:relative; top:auto; background:transparent; backdrop-filter:none;
+      border:0;
+    }
+    .card .head{
+      padding:14px 14px 10px;
+      display:flex; align-items:flex-end; justify-content:space-between; gap:10px;
+      border-bottom:1px solid var(--border);
+    }
+    .card .head h2{ margin:0; font-size:14px; }
+    .card .head .meta{ color:var(--muted); font-size:12px; }
+    .pane{
+      position:relative;
+      height: 520px;
+    }
+    .pane svg{ width:100%; height:100%; }
+    .hint{
+      padding:10px 14px 14px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.4;
+    }
+    .pill{
+      display:inline-block; padding:3px 8px; border-radius:999px;
+      border:1px solid var(--border); color:var(--muted); font-size:12px;
+      margin-right:6px;
+    }
+    .toast{
+      position:fixed; right:16px; bottom:16px; z-index:50;
+      background:rgba(15,26,43,.92); border:1px solid var(--border);
+      color:var(--text); padding:10px 12px; border-radius:12px;
+      box-shadow: var(--shadow); display:none; font-size:12px;
+    }
+    .link{
+      color:var(--accent); text-decoration:none;
+      border-bottom:1px dashed rgba(93,169,255,.5);
+    }
+  </style>
+
+  <!-- Mermaid -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- Pan/Zoom -->
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">
+        <h1>GABBI – FinOps Core (Fase 1)</h1>
+        <div class="sub">C4 Container + Fluxo de Billing (Interaction → Accumulator → CostLedger → Grafana)</div>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="navTo('c4')">Abrir C4</button>
+        <button class="btn" onclick="navTo('seq')">Abrir Fluxo</button>
+        <button class="btn" onclick="exportSvgActive()">Exportar SVG (aba ativa)</button>
+        <button class="btn" onclick="resetZoom()">Reset Zoom</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="grid">
+
+    <section id="c4" class="card">
+      <div class="head">
+        <div>
+          <h2>C4 – Container (Fase 1: Custo)</h2>
+          <div class="meta"><span class="pill">auditável</span><span class="pill">token mínimo</span><span class="pill">ledger</span></div>
+        </div>
+        <div class="meta">Dica: use scroll/arraste para navegar</div>
+      </div>
+      <div class="pane">
+        <div class="mermaid" data-diagram="c4">
+flowchart LR
+  U[Usuário (Colaborador)] -->|Uso manual| UI[Front GABBI (Web UI)]
+  A[Orquestradores (n8n/Airflow)] -->|Uso automatizado| API[BFF / API GABBI]
+
+  UI -->|Eventos + tokens| FIN[FinOps Service (Billing)]
+  API -->|Eventos + tokens| FIN
+
+  subgraph DATA[Camada de Dados (Auditável e Financeira)]
+    I[(Interaction\nlog bruto: tokens/modelo/ator)]
+    BA[(BillingAccumulator\nsobras por balde)]
+    CL[(CostLedger\nlançamentos financeiros)]
+    MP[(ModelPricing\nmin_tokens/min_cost versionado)]
+  end
+
+  FIN -->|1) grava| I
+  FIN -->|2) acumula| BA
+  FIN -->|3) aplica pricing vigente| MP
+  FIN -->|4) gera ledger (quando fecha mínimo)| CL
+
+  subgraph OBS[Observabilidade]
+    EXP[Metrics Exporter\n(HTTP /metrics ou SQL views)]
+    G[Grafana]
+  end
+
+  CL -->|fonte de verdade| EXP
+  EXP -->|dashboards| G
+
+  note1{{Fase 1: dashboards financeiros usam\nCostLedger (não Interaction).}} --- G
+        </div>
+      </div>
+      <div class="hint">
+        <b>Mensagem-chave:</b> Interaction registra o bruto (auditável), <b>CostLedger</b> é o financeiro (para Grafana).
+        <br/>Deep-link: <a class="link" href="#c4">#c4</a>
+      </div>
+    </section>
+
+    <section id="seq" class="card">
+      <div class="head">
+        <div>
+          <h2>Fluxo – Fechamento do mínimo e geração de ledger</h2>
+          <div class="meta"><span class="pill">idempotência</span><span class="pill">lock por balde</span></div>
+        </div>
+        <div class="meta">Pan/Zoom habilitado</div>
+      </div>
+      <div class="pane">
+        <div class="mermaid" data-diagram="seq">
+sequenceDiagram
+  autonumber
+  participant S as Source (UI ou Automação)
+  participant F as FinOps Service
+  participant I as Interaction
+  participant BA as BillingAccumulator
+  participant MP as ModelPricing
+  participant CL as CostLedger
+
+  S->>F: evento(tokens_total, model, contexto)
+  F->>I: INSERT Interaction (log bruto)
+  F->>MP: SELECT pricing vigente (model, ts, tenant)
+  F->>BA: UPSERT/LOCK balde (manual ou automação)
+  F->>BA: pending_tokens += tokens_total
+
+  alt pending_tokens < min_tokens
+    F-->>S: ok (sem ledger)
+  else pending_tokens >= min_tokens
+    loop enquanto pending_tokens >= min_tokens
+      F->>BA: pending_tokens -= min_tokens; close_count++
+      alt MANUAL
+        F->>CL: INSERT 1 linha (Area=Area do colaborador)
+      else AUTOMATION
+        F->>CL: INSERT N linhas (rateio igual por área da Task)
+      end
+    end
+    F->>BA: UPDATE pending_tokens/close_count
+    F-->>S: ok (ledger gerado)
+  end
+        </div>
+      </div>
+      <div class="hint">
+        <b>Boas práticas:</b> lock no accumulator + idempotency_key única no ledger.
+        <br/>Deep-link: <a class="link" href="#seq">#seq</a>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    securityLevel: "loose",
+    flowchart: { curve: "basis" }
+  });
+
+  let panZoomInstances = [];
+  let activeDiagram = "c4";
+
+  function showToast(msg){
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.style.display = "block";
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(()=> t.style.display="none", 2400);
+  }
+
+  function navTo(id){
+    location.hash = "#" + id;
+    activeDiagram = (id === "seq") ? "seq" : "c4";
+    showToast("Abrindo " + id.toUpperCase());
+  }
+
+  function setupPanZoom(){
+    // Mermaid renders SVGs async; wait a bit then bind panZoom
+    panZoomInstances.forEach(i => i.destroy && i.destroy());
+    panZoomInstances = [];
+
+    document.querySelectorAll(".mermaid").forEach((el)=>{
+      const svg = el.querySelector("svg");
+      if(!svg) return;
+      // Ensure viewBox for pan/zoom
+      if(!svg.getAttribute("viewBox")){
+        const w = svg.getAttribute("width") || 1000;
+        const h = svg.getAttribute("height") || 600;
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      }
+      const inst = svgPanZoom(svg, {
+        zoomEnabled: true,
+        controlIconsEnabled: false,
+        fit: true,
+        center: true,
+        minZoom: 0.2,
+        maxZoom: 12
+      });
+      panZoomInstances.push(inst);
+    });
+  }
+
+  function resetZoom(){
+    panZoomInstances.forEach(inst => {
+      inst.resetZoom();
+      inst.fit();
+      inst.center();
+    });
+    showToast("Zoom resetado");
+  }
+
+  function exportSvgActive(){
+    const target = document.querySelector(`.mermaid[data-diagram="${activeDiagram}"] svg`);
+    if(!target){ showToast("SVG ainda não pronto"); return; }
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(target);
+
+    const blob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gabbi_finops_fase1_${activeDiagram}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Exportado SVG: " + activeDiagram.toUpperCase());
+  }
+
+  // Track active diagram based on hash
+  window.addEventListener("hashchange", ()=>{
+    activeDiagram = (location.hash === "#seq") ? "seq" : "c4";
+  });
+
+  // Mermaid render completion hook: poll until SVG exists
+  (function poll(){
+    const allReady = [...document.querySelectorAll(".mermaid")].every(el => el.querySelector("svg"));
+    if(allReady){
+      setupPanZoom();
+      return;
+    }
+    setTimeout(poll, 250);
+  })();
+</script>
+</body>
+</html>

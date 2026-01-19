@@ -1,0 +1,26 @@
+flowchart LR
+  U["Usuario<br/>Colaborador"] -->|uso manual| UI["Front GABBI<br/>Web UI"]
+  A["Orquestradores<br/>n8n / Airflow"] -->|uso automatizado| API["BFF / API GABBI"]
+
+  UI -->|eventos + tokens| FIN["FinOps Service<br/>Billing"]
+  API -->|eventos + tokens| FIN
+
+  subgraph DATA["Camada de Dados"]
+    I[("Interaction<br/>log bruto")]
+    BA[("BillingAccumulator<br/>sobras por balde")]
+    CL[("CostLedger<br/>financeiro")]
+    MP[("ModelPricing<br/>min tokens / custo")]
+  end
+
+  FIN -->|1 grava| I
+  FIN -->|2 acumula| BA
+  FIN -->|3 aplica pricing| MP
+  FIN -->|4 gera ledger| CL
+
+  subgraph OBS["Observabilidade"]
+    EXP["Metrics Exporter<br/>SQL ou HTTP"]
+    G["Grafana"]
+  end
+
+  CL -->|fonte de verdade| EXP
+  EXP -->|dashboards| G

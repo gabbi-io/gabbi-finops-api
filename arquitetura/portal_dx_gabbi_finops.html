@@ -1,0 +1,1476 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Spread • GABBI FinOps — Portal DX (Híbrido: Negócio + Técnico) | Fase 1 (Custo)</title>
+
+  <style>
+    :root{
+      --bg:#f4f5f9;
+      --card:#ffffff;
+      --border:#e6e7ef;
+      --text:#1f2430;
+      --muted:#6b7382;
+
+      --purple:#6c3cff;           /* gabbi */
+      --purple-2:#845bff;
+      --purple-soft:#efe7ff;
+
+      --orange:#ff8a00;           /* destaque */
+      --orange-2:#ffa032;
+
+      --ok:#1f9d63;
+      --warn:#f2b01e;
+      --bad:#e05656;
+
+      --shadow: 0 10px 24px rgba(15, 24, 40, .10);
+      --radius: 14px;
+
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    /* Dark mode */
+    [data-theme="dark"]{
+      --bg:#0b1220;
+      --card:#0f1a2b;
+      --border:#22314d;
+      --text:#e6eefc;
+      --muted:#a9b6d3;
+      --purple-soft: rgba(108,60,255,.10);
+      --shadow: 0 10px 24px rgba(0,0,0,.35);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--sans);
+      background:var(--bg);
+      color:var(--text);
+    }
+    a{color:inherit; text-decoration:none}
+    .layout{display:flex; min-height:100vh; overflow:hidden;}
+
+    /* Sidebar (template gabbi/spread) */
+    .sidebar{
+      width:340px;
+      background: linear-gradient(180deg, var(--purple-soft), var(--card));
+      border-right: 1px solid var(--border);
+      padding: 18px 16px;
+      display:flex; flex-direction:column; gap:14px;
+      position:sticky; top:0; height:100vh;
+    }
+    .brand{padding:8px 10px}
+    .brand-logo{
+      font-size:44px; font-weight:900;
+      letter-spacing:-1px; color: var(--purple);
+      line-height: 1;
+    }
+    .brand-sub{margin-top:6px; color:var(--muted); font-size:13px}
+    .pill{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(108,60,255,.22);
+      background: rgba(108,60,255,.08);
+      color: var(--purple);
+      font-weight:800; font-size:12px;
+      width: max-content;
+    }
+    .sidebar-card{
+      background: rgba(255,255,255,.72);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:12px 12px;
+    }
+    [data-theme="dark"] .sidebar-card{
+      background: rgba(15,26,43,.72);
+    }
+
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+    .nav{display:flex; flex-direction:column; gap:8px; padding: 4px 2px}
+    .nav-item{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px;
+      border-radius: 12px;
+      color: var(--text);
+      border:1px solid transparent;
+    }
+    .nav-item:hover{background: rgba(108,60,255,.08); border-color: rgba(108,60,255,.18)}
+    .nav-item.active{background: rgba(108,60,255,.12); border-color: rgba(108,60,255,.28)}
+    .nav-ico{width:22px; text-align:center}
+    .tiny{font-size:12px}
+    .muted{color:var(--muted)}
+    .strong{font-weight:800}
+    .mono{font-family:var(--mono)}
+
+    .sidebar-footer{
+      margin-top:auto;
+      display:flex; flex-direction:column; gap:10px;
+      padding: 8px 2px;
+    }
+
+    /* Main */
+    .main{flex:1; display:flex; flex-direction:column; overflow:hidden}
+    .topbar{
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 14px 20px;
+      gap:12px;
+    }
+    .page-title{font-size:18px; font-weight:900}
+    .page-sub{font-size:13px; color:var(--muted); margin-top:4px}
+    .topbar-right{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+    .client-pill{
+      border:1px solid var(--border);
+      background: var(--card);
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+    }
+    .avatar{
+      width:34px; height:34px; border-radius: 50%;
+      background: rgba(108,60,255,.12);
+      border:1px solid rgba(108,60,255,.22);
+      color: var(--purple);
+      display:flex; align-items:center; justify-content:center;
+      font-weight:900;
+    }
+
+    .content{
+      padding: 16px 18px 22px;
+      overflow:auto;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card-head{
+      padding: 12px 12px;
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-title{font-weight:900}
+    .card-sub{font-size:12px; color:var(--muted); margin-top:4px}
+    .card-body{padding: 12px 12px}
+    .grid{
+      display:grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap:12px;
+    }
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+
+    .btn{
+      border:1px solid var(--border);
+      background:var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:800;
+      font-size:13px;
+      display:inline-flex; align-items:center; gap:8px;
+      user-select:none;
+    }
+    .btn:hover{border-color: rgba(108,60,255,.28)}
+    .btn.primary{
+      background: linear-gradient(180deg, var(--orange-2), var(--orange));
+      border-color: rgba(255,138,0,.22);
+      color:#fff;
+    }
+    .btn.ghost{
+      background: rgba(108,60,255,.06);
+      border-color: rgba(108,60,255,.18);
+      color: var(--purple);
+    }
+    .btn.danger{
+      background: rgba(224,86,86,.12);
+      border-color: rgba(224,86,86,.22);
+      color: #b12e2e;
+    }
+
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:12px;
+      margin-top:12px;
+    }
+    .kpi{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 12px 12px;
+    }
+    .kpi-label{font-size:12px; color:var(--muted)}
+    .kpi-value{font-size:20px; font-weight:900; margin-top:6px}
+    .kpi-sub{font-size:12px; color:var(--muted); margin-top:6px}
+
+    .tag{
+      display:inline-flex; align-items:center; justify-content:center;
+      font-weight:900;
+      font-size:11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border:1px solid var(--border);
+      white-space:nowrap;
+    }
+    .tag-ok{background: rgba(31,157,99,.12); border-color: rgba(31,157,99,.22); color:#0f6a42}
+    .tag-scope{background: rgba(108,60,255,.12); border-color: rgba(108,60,255,.22); color:var(--purple)}
+    .tag-demo{background: rgba(255,138,0,.12); border-color: rgba(255,138,0,.22); color:#a85a00}
+
+    .quote{
+      border-left: 4px solid rgba(255,138,0,.75);
+      background: rgba(255,138,0,.06);
+      padding: 10px 12px;
+      border-radius: 12px;
+    }
+    [data-theme="dark"] .quote{
+      background: rgba(255,138,0,.10);
+    }
+
+    .callout{
+      border: 1px dashed rgba(108,60,255,.35);
+      background: rgba(108,60,255,.04);
+      padding: 12px 12px;
+      border-radius: 12px;
+    }
+
+    .bullets{margin:0; padding-left:18px; color:var(--muted); font-size:13px}
+    .sep{height:12px}
+    .linkrow{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+    .link{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:var(--card);
+      font-weight:800;
+      font-size:13px;
+    }
+    .link:hover{border-color: rgba(108,60,255,.28)}
+    .toggle{
+      display:flex; align-items:center; gap:10px;
+      border:1px solid var(--border);
+      background:var(--card);
+      padding: 8px 10px;
+      border-radius: 12px;
+    }
+    .toggle input{transform:scale(1.1)}
+    .search{
+      width:100%;
+      border:1px solid var(--border);
+      background:var(--card);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius: 12px;
+      outline:none;
+      font-size:13px;
+    }
+    .search:focus{border-color: rgba(108,60,255,.35); box-shadow: 0 0 0 4px rgba(108,60,255,.10)}
+    .table-wrap{overflow:auto; border:1px solid var(--border); border-radius: 12px}
+    table{width:100%; border-collapse:collapse; font-size:13px; min-width: 860px}
+    th, td{padding: 10px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top}
+    th{font-size:12px; color:var(--muted); background: rgba(108,60,255,.04)}
+    code.inline{
+      font-family:var(--mono);
+      font-size:12px;
+      background: rgba(108,60,255,.06);
+      border:1px solid rgba(108,60,255,.18);
+      padding:2px 6px; border-radius:8px;
+    }
+
+    /* Mermaid cards */
+    .diagram{
+      border:1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(108,60,255,.02);
+      overflow:hidden;
+    }
+    .diagram-head{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding: 10px 10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(108,60,255,.03);
+    }
+    .diagram-body{
+      padding: 10px 10px;
+      height: 560px;
+      position:relative;
+    }
+    .diagram-body .mermaid{height:100%}
+    .diagram-body svg{width:100%; height:100%}
+
+    .toast{
+      position:fixed; right:16px; bottom:16px; z-index:50;
+      background: rgba(15,26,43,.92);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      display:none;
+      font-size:12px;
+      max-width: 360px;
+    }
+
+    @media (max-width: 1100px){
+      .layout{flex-direction:column}
+      .sidebar{width:auto; height:auto; position:relative}
+      .grid, .grid2{grid-template-columns: 1fr}
+      .kpis{grid-template-columns: 1fr 1fr}
+      .diagram-body{height: 520px}
+    }
+    @media (max-width: 640px){
+      .kpis{grid-template-columns: 1fr}
+    }
+  </style>
+
+  <!-- Mermaid -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- Pan/Zoom -->
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+</head>
+
+<body>
+<div class="layout" id="app" data-theme="light">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">gabbi</div>
+      <div class="brand-sub">Spread • FinOps Core — Portal DX (Híbrido)</div>
+      <div style="height:10px"></div>
+      <span class="pill">Fase 1 • Custo auditável</span>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="muted tiny">Conceito central</div>
+      <div class="strong" style="margin-top:4px">Interaction → Accumulator → CostLedger → Grafana</div>
+      <div class="tiny muted" style="margin-top:6px">
+        <span class="tag tag-scope">auditável</span>
+        <span class="tag tag-scope">mínimo</span>
+        <span class="tag tag-scope">ledger</span>
+      </div>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="strong">Navegar</div>
+        <span class="tag tag-demo">DX</span>
+      </div>
+      <div class="sep"></div>
+      <input id="search" class="search" placeholder="Buscar no portal (ex.: ledger, idempotência, docker)..." />
+      <div class="sep"></div>
+      <nav class="nav" id="nav">
+        <a href="#overview" class="nav-item active"><span class="nav-ico">🧭</span><span>Visão geral</span></a>
+        <a href="#value" class="nav-item"><span class="nav-ico">💡</span><span>Para o negócio</span></a>
+        <a href="#quickstart" class="nav-item"><span class="nav-ico">⚡</span><span>Quickstart (Dev)</span></a>
+        <a href="#architecture" class="nav-item"><span class="nav-ico">🏗️</span><span>Arquitetura & Fluxos</span></a>
+        <a href="#contracts" class="nav-item"><span class="nav-ico">🧾</span><span>Contratos & Dados</span></a>
+        <a href="#devguide" class="nav-item"><span class="nav-ico">👨‍💻</span><span>Guia do Dev</span></a>
+        <a href="#runbook" class="nav-item"><span class="nav-ico">🛠️</span><span>Runbook</span></a>
+        <a href="#demo" class="nav-item"><span class="nav-ico">🎙️</span><span>Roteiro de demo</span></a>
+        <a href="#roadmap" class="nav-item"><span class="nav-ico">🚀</span><span>Roadmap</span></a>
+        <a href="#assets" class="nav-item"><span class="nav-ico">📎</span><span>Artefatos</span></a>
+      </nav>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="row">
+        <span class="tag tag-scope">Fase 1</span>
+        <span class="tag tag-demo">Híbrido</span>
+        <span class="tag tag-ok">PoC</span>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="toggle">
+        <input id="toggleTech" type="checkbox" checked />
+        <label for="toggleTech" class="tiny">Mostrar detalhes técnicos (RDA)</label>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="toggle">
+        <input id="toggleTheme" type="checkbox" />
+        <label for="toggleTheme" class="tiny">Dark mode</label>
+      </div>
+
+      <div class="tiny muted" style="margin-top:10px">
+        Dica: use <span class="mono">Ctrl+F</span> para buscar ou a barra acima para filtrar seções.
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="tiny muted">Links rápidos (PoC)</div>
+      <div class="row" style="gap:8px">
+        <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 /finops</a>
+        <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 /ledger</a>
+        <a class="link" href="http://127.0.0.1:5000/interactions" target="_blank">🧩 /interactions</a>
+        <a class="link" href="http://127.0.0.1:5000/accumulators" target="_blank">🪣 /accumulators</a>
+      </div>
+      <div class="tiny muted">vDX-Portal • Spread/Gabbi template</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="page-title">Portal DX — FinOps Core (Fase 1)</div>
+        <div class="page-sub">Tudo em um lugar: narrativa para negócio + guia para dev + arquitetura + runbook</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn ghost" onclick="window.print()">🖨️ Imprimir / PDF</button>
+        <button class="btn" onclick="copyLink()">🔗 Copiar link da seção</button>
+        <div class="client-pill">Spread • Gabbi • FinOps</div>
+        <div class="avatar">SP</div>
+      </div>
+    </header>
+
+    <section class="content">
+
+      <!-- OVERVIEW -->
+      <section id="overview" class="card dx-section" data-tags="visao geral resumo fase1 custo finops ledger accumulator interaction grafana">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🧭 Visão geral</div>
+            <div class="card-sub">O que é a Fase 1, por que existe e qual é a mensagem-chave.</div>
+          </div>
+          <div class="row">
+            <span class="tag tag-scope">Fase 1</span>
+            <span class="tag tag-ok">Custo auditável</span>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="kpi-label">Valor para negócio</div>
+              <div class="kpi-value">Custo confiável</div>
+              <div class="kpi-sub">Sai do “achismo” → vira ledger auditável</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Governança</div>
+              <div class="kpi-value">Rastreável</div>
+              <div class="kpi-sub">Manual vs Automação, por modelo, por task/flow</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Operação</div>
+              <div class="kpi-value">Pronto p/ Grafana</div>
+              <div class="kpi-sub">Dashboards e alertas consultam CostLedger</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Base do ROI</div>
+              <div class="kpi-value">Preparado</div>
+              <div class="kpi-sub">Fase 2/3 plugam em cima do ledger</div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="grid">
+            <div>
+              <div class="quote">
+                <div class="strong">Mensagem-chave</div>
+                <div class="tiny muted" style="margin-top:6px">
+                  “<b>Custo não pode ser sensação.</b> Precisa virar <b>CostLedger</b>, com rastreabilidade e mínimos de billing.”
+                </div>
+              </div>
+
+              <div class="sep"></div>
+
+              <div class="callout">
+                <div class="strong">Conceito central</div>
+                <div class="tiny muted" style="margin-top:6px">
+                  <span class="mono">Interaction</span> registra o bruto (auditável).
+                  <span class="mono">BillingAccumulator</span> acumula sobras para respeitar mínimo.
+                  <span class="mono">CostLedger</span> é o financeiro (fonte de verdade).
+                  <span class="mono">Grafana</span> lê o ledger (não recalcula).
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="strong">O que esta PoC prova</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Auditabilidade por evento (Interaction)</li>
+                <li>Acurácia financeira com mínimo de cobrança (Accumulator)</li>
+                <li>Fonte única de verdade financeira (CostLedger)</li>
+                <li>Separação Manual vs Automação</li>
+                <li>Rastreio por automação (task/flow) para governança</li>
+              </ul>
+
+              <div class="sep"></div>
+
+              <div class="row">
+                <a class="btn primary" href="#quickstart">⚡ Ir para Quickstart</a>
+                <a class="btn" href="#architecture">🏗️ Ver arquitetura</a>
+              </div>
+
+              <div class="sep"></div>
+
+              <div class="tiny muted tech-only">
+                <b>RDA-001 (resumo):</b> dashboards e relatórios financeiros consultam exclusivamente o CostLedger; Interaction é log bruto auditável e não-financeiro; Accumulator trata mínimos (min_tokens/min_cost) e sobras por balde.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- VALUE (BUSINESS) -->
+      <section id="value" class="card dx-section" data-tags="negocio valor governanca auditoria custos kpi grafana riscos cab decisao">
+        <div class="card-head">
+          <div>
+            <div class="card-title">💡 Para o negócio</div>
+            <div class="card-sub">Como explicar a Fase 1 para demandantes, governança e comitês.</div>
+          </div>
+          <span class="tag tag-demo">Executivo</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div class="quote">
+              <div class="strong">O que o negócio ganha agora</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li><b>Visibilidade</b>: custo total e tendências em período</li>
+                <li><b>Governança</b>: manual vs automação e “quem está consumindo”</li>
+                <li><b>Priorização</b>: Top tasks/flows para atacar primeiro</li>
+                <li><b>Base de ROI</b>: fases 2/3 acoplam sem refazer UX</li>
+              </ul>
+            </div>
+
+            <div class="callout">
+              <div class="strong">O que NÃO estamos prometendo na Fase 1</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>ROI por área / centro de custo</li>
+                <li>Benefício/receita por execução</li>
+                <li>Rateio ponderado</li>
+              </ul>
+              <div class="tiny muted" style="margin-top:8px">
+                Isso entra nas próximas fases. O ganho agora é <b>custo auditável</b>.
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="strong">Perguntas que o dashboard deve responder (Fase 1)</div>
+          <div class="table-wrap" style="margin-top:10px">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pergunta</th>
+                  <th>Como respondemos</th>
+                  <th>Fonte</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>Quanto custou no período?</b></td>
+                  <td>Soma de lançamentos no ledger</td>
+                  <td><code class="inline">CostLedger</code></td>
+                </tr>
+                <tr>
+                  <td><b>O custo é mais manual ou automação?</b></td>
+                  <td>Dimensão <code class="inline">source_type</code></td>
+                  <td><code class="inline">CostLedger</code></td>
+                </tr>
+                <tr>
+                  <td><b>Quais modelos mais consomem?</b></td>
+                  <td>Agrupamento por <code class="inline">model</code></td>
+                  <td><code class="inline">CostLedger</code></td>
+                </tr>
+                <tr>
+                  <td><b>Qual automação está “gastando”?</b></td>
+                  <td>Top por <code class="inline">task_id</code> / <code class="inline">flow_id</code></td>
+                  <td><code class="inline">CostLedger</code></td>
+                </tr>
+                <tr>
+                  <td><b>Dá para auditar de onde veio?</b></td>
+                  <td>Rastreio do ledger para Interactions</td>
+                  <td><code class="inline">Interaction</code> + metadados</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="callout tech-only">
+            <div class="strong">Riscos & controles (resumo)</div>
+            <ul class="bullets" style="margin-top:8px">
+              <li><b>Risco:</b> custo “não bate” com percepção → <b>Controle:</b> ledger + mínimo transparente + auditoria</li>
+              <li><b>Risco:</b> duplicidade em retries → <b>Controle:</b> idempotency_key UNIQUE no ledger</li>
+              <li><b>Risco:</b> concorrência no accumulator → <b>Controle:</b> lock transacional por balde</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- QUICKSTART -->
+      <section id="quickstart" class="card dx-section" data-tags="quickstart dev docker compose venv requirements executar subir local healthcheck env azure openai">
+        <div class="card-head">
+          <div>
+            <div class="card-title">⚡ Quickstart (Dev)</div>
+            <div class="card-sub">Rodar local, rodar em Docker e testar endpoints principais.</div>
+          </div>
+          <span class="tag tag-scope">Dev</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div>
+              <div class="strong">Rodar local</div>
+              <div class="sep"></div>
+              <div class="callout">
+                <div class="tiny muted"><b>Windows</b></div>
+                <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python app.py</pre>
+              </div>
+              <div class="sep"></div>
+              <div class="callout">
+                <div class="tiny muted"><b>Linux/Mac</b></div>
+                <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python app.py</pre>
+              </div>
+            </div>
+
+            <div>
+              <div class="strong">Rodar com Docker (recomendado)</div>
+              <div class="sep"></div>
+              <div class="callout">
+                <div class="tiny muted"><b>.env (Azure OpenAI)</b></div>
+                <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">AZURE_OPENAI_ENDPOINT=https://SEU-RESOURCE.openai.azure.com/
+AZURE_OPENAI_API_KEY=xxxx
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_DEPLOYMENT=nome-do-deployment</pre>
+              </div>
+
+              <div class="sep"></div>
+
+              <div class="callout">
+                <div class="tiny muted"><b>Subir</b></div>
+                <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">docker compose up -d --build</pre>
+              </div>
+
+              <div class="sep"></div>
+
+              <div class="callout">
+                <div class="tiny muted"><b>Testar health</b></div>
+                <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">curl http://localhost:8000/health</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="strong">Rotas úteis</div>
+          <div class="row" style="margin-top:10px">
+            <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 /finops</a>
+            <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 /ledger</a>
+            <a class="link" href="http://127.0.0.1:5000/interactions" target="_blank">🧩 /interactions</a>
+            <a class="link" href="http://127.0.0.1:5000/accumulators" target="_blank">🪣 /accumulators</a>
+            <a class="link" href="http://127.0.0.1:5000/pricing" target="_blank">🏷️ /pricing</a>
+            <a class="link" href="http://127.0.0.1:5000/settings" target="_blank">⚙️ /settings</a>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="callout tech-only">
+            <div class="strong">Critérios de aceite (Fase 1)</div>
+            <ul class="bullets" style="margin-top:8px">
+              <li>Visualizar custo total, por origem e por modelo</li>
+              <li>Ledger consistente: sem duplicidade em retries (idempotência)</li>
+              <li>Interaction auditável: todo evento de tokens registrado</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- ARCHITECTURE -->
+      <section id="architecture" class="card dx-section" data-tags="arquitetura c4 mermaid diagrama sequencia fluxo billing accumulator ledger grafana observabilidade">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🏗️ Arquitetura & fluxos</div>
+            <div class="card-sub">C4 Container + sequência de fechamento do mínimo + fluxo negocial (storytelling).</div>
+          </div>
+          <div class="row">
+            <button class="btn" onclick="resetZoom()">🔄 Reset zoom</button>
+            <button class="btn" onclick="exportActiveSvg()">⬇️ Exportar SVG</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="row">
+            <span class="tag tag-scope">C4</span>
+            <span class="tag tag-scope">Sequence</span>
+            <span class="tag tag-scope">Storytelling</span>
+            <span class="tag tag-ok">Mermaid</span>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="grid2">
+            <div class="diagram">
+              <div class="diagram-head">
+                <div>
+                  <div class="strong">C4 — Container</div>
+                  <div class="tiny muted">Visão do FinOps Core na Fase 1 (custo)</div>
+                </div>
+                <button class="btn ghost" onclick="setActive('c4')">Ativar</button>
+              </div>
+              <div class="diagram-body">
+                <div class="mermaid" data-diagram="c4">
+flowchart LR
+  U["Usuario<br/>Colaborador"] -->|uso manual| UI["Front GABBI<br/>Web UI"]
+  A["Orquestradores<br/>n8n / Airflow"] -->|uso automatizado| API["BFF / API GABBI"]
+
+  UI -->|eventos + tokens| FIN["FinOps Service<br/>Billing"]
+  API -->|eventos + tokens| FIN
+
+  subgraph DATA["Camada de Dados"]
+    I[("Interaction<br/>log bruto")]
+    BA[("BillingAccumulator<br/>sobras por balde")]
+    CL[("CostLedger<br/>financeiro")]
+    MP[("ModelPricing<br/>min tokens / custo")]
+  end
+
+  FIN -->|1 grava| I
+  FIN -->|2 acumula| BA
+  FIN -->|3 aplica pricing| MP
+  FIN -->|4 gera ledger| CL
+
+  subgraph OBS["Observabilidade"]
+    EXP["Metrics Exporter<br/>SQL ou HTTP"]
+    G["Grafana"]
+  end
+
+  CL -->|fonte de verdade| EXP
+  EXP -->|dashboards| G
+                </div>
+              </div>
+            </div>
+
+            <div class="diagram">
+              <div class="diagram-head">
+                <div>
+                  <div class="strong">Sequência — Fechamento do mínimo</div>
+                  <div class="tiny muted">Lock por balde + idempotência no ledger</div>
+                </div>
+                <button class="btn ghost" onclick="setActive('seq')">Ativar</button>
+              </div>
+              <div class="diagram-body">
+                <div class="mermaid" data-diagram="seq">
+sequenceDiagram
+  autonumber
+  participant S as Source
+  participant F as FinOps_Service
+  participant I as Interaction
+  participant BA as BillingAccumulator
+  participant MP as ModelPricing
+  participant CL as CostLedger
+
+  S->>F: evento(tokens, modelo)
+  F->>I: insert interaction
+  F->>MP: select pricing vigente
+  F->>BA: lock balde
+  F->>BA: soma tokens
+
+  alt tokens < minimo
+    F-->>S: ok sem ledger
+  else tokens >= minimo
+    loop enquanto >= minimo
+      F->>BA: subtrai minimo
+      alt manual
+        F->>CL: insert ledger manual
+      else automacao
+        F->>CL: insert ledger rateado
+      end
+    end
+    F->>BA: update acumulador
+    F-->>S: ok ledger gerado
+  end
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="diagram">
+            <div class="diagram-head">
+              <div>
+                <div class="strong">Fluxo negocial — Storytelling (Executivo)</div>
+                <div class="tiny muted">A narrativa de “custo auditável” conectada à execução</div>
+              </div>
+              <button class="btn ghost" onclick="setActive('flow')">Ativar</button>
+            </div>
+            <div class="diagram-body" style="height:640px;">
+              <div class="mermaid" data-diagram="flow">
+sequenceDiagram
+  autonumber
+  actor U as Usuario/Colaborador
+  participant UI as Front GABBI (Web UI)
+  participant ORQ as Orquestradores (n8n/Airflow)
+  participant API as BFF / API GABBI
+  participant FIN as FinOps Service (Billing)
+  participant I as Interaction log bruto
+  participant BA as BillingAccumulator (balde)
+  participant MP as ModelPricing
+  participant CL as CostLedger (financeiro)
+  participant G as Grafana
+
+  Note over FIN: 1) "Aqui a ideia é simples: transformar custo de IA em algo financeiro e auditável."<br/>"Custo não pode ser sensação — precisa virar ledger, com rastreabilidade e mínimos de billing."
+
+  par Uso manual
+    U->>UI: Envia mensagem/ação
+    UI->>API: Chamada com evento + tokens
+  and Uso automatizado
+    ORQ->>API: Execução automatizada
+  end
+
+  API->>FIN: Evento de consumo (tokens, modelo, origem)
+
+  Note over FIN,I: 2) "Tudo começa nas Interactions: registramos cada uso, sem caixa preta."<br/>"Isso é a prova de auditoria do consumo (tokens, modelo, origem manual/automação)."
+  FIN->>I: 1) grava interaction (auditoria)
+
+  Note over FIN,BA: 3) "Depois vem o balde (Accumulator): acumulamos tokens até fechar o mínimo."<br/>"Isso reproduz o comportamento real de cobrança mínima: fecha quando atinge min_tokens."
+  FIN->>BA: 2) acumula tokens por balde
+  BA-->>FIN: min_tokens atingido? (fecha balde)
+
+  FIN->>MP: 3) aplica pricing (tabela de custos)
+  MP-->>FIN: custo calculado
+
+  Note over FIN,CL: 4) "Quando fecha, geramos o CostLedger: isso é o que vai para o Grafana."<br/>"Ou seja: custo vira linha financeira, pronta para métricas e dashboard."
+  FIN->>CL: 4) gera linha financeira (ledger)
+
+  Note over G: 5) "E o Grafana entra aqui: o layout já está preparado para embutir o painel real."<br/>"Quando estiver pronto, é só colar a URL do embed — UX não muda."
+  CL-->>G: Fonte de verdade p/ métricas (SQL/HTTP)
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="callout tech-only">
+            <div class="strong">Requisitos técnicos derivados (RDA)</div>
+            <ul class="bullets" style="margin-top:8px">
+              <li>Lock transacional por balde no <code class="inline">BillingAccumulator</code></li>
+              <li><code class="inline">idempotency_key</code> UNIQUE no <code class="inline">CostLedger</code></li>
+              <li><code class="inline">ModelPricing</code> versionado (vigência)</li>
+              <li>Dashboards consultam <code class="inline">CostLedger</code> (não Interaction)</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- CONTRACTS -->
+      <section id="contracts" class="card dx-section" data-tags="contratos evento interactionevent json ledger accumulator pricing idempotency_key bucket model tokens">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🧾 Contratos & dados</div>
+            <div class="card-sub">Modelos de dados (lógico) para padronizar integrações e evitar anti-patterns.</div>
+          </div>
+          <span class="tag tag-scope">Dev + Integrações</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div class="callout">
+              <div class="strong">InteractionEvent (auditável)</div>
+              <div class="tiny muted" style="margin-top:6px">
+                Sempre é registrado. Mesmo quando não gera ledger (por ainda não ter fechado o mínimo).
+              </div>
+              <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">{
+  "interaction_id": "uuid",
+  "ts": "2026-01-14T10:30:00Z",
+  "tenant_id": "tenant-a",
+  "source_type": "MANUAL|AUTOMATION",
+  "model": "gpt-4o",
+  "tokens_input": 120,
+  "tokens_output": 240,
+  "tokens_total": 360,
+  "collaborator_id": "user123",   // manual
+  "task_id": "task-abc",          // automação
+  "flow_id": "flow-x",
+  "conversation_id": "conv-999",
+  "metadata": { "channel": "web|whatsapp", "tags": ["finops"] }
+}</pre>
+            </div>
+
+            <div class="callout">
+              <div class="strong">CostLedgerEntry (financeiro)</div>
+              <div class="tiny muted" style="margin-top:6px">
+                Única fonte de verdade para custo em dashboards. Deve ser idempotente.
+              </div>
+              <pre class="mono" style="margin:10px 0 0; white-space:pre-wrap;">{
+  "ledger_id": "uuid",
+  "ts": "2026-01-14T10:30:02Z",
+  "tenant_id": "tenant-a",
+  "source_type": "MANUAL|AUTOMATION",
+  "model": "gpt-4o",
+  "tokens_billed": 1000,
+  "amount": 12.34,
+  "bucket_key": "tenant-a|gpt-4o|user123",
+  "task_id": "task-abc",
+  "flow_id": "flow-x",
+  "idempotency_key": "tenant-a:gpt-4o:bucket:close#000123"
+}</pre>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="callout tech-only">
+            <div class="strong">Bucketização (BillingAccumulator)</div>
+            <div class="tiny muted" style="margin-top:6px">
+              A PoC trabalha com “baldes” para respeitar mínimo de billing por modelo.
+            </div>
+            <ul class="bullets" style="margin-top:8px">
+              <li><b>Manual:</b> (Tenant, Model, CollaboratorId)</li>
+              <li><b>Automação:</b> (Tenant, Model, TaskId)</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- DEV GUIDE -->
+      <section id="devguide" class="card dx-section" data-tags="guia dev boas praticas antipattern idempotencia lock accumulator ledger interaction grafana testes">
+        <div class="card-head">
+          <div>
+            <div class="card-title">👨‍💻 Guia do Dev</div>
+            <div class="card-sub">Boas práticas + anti-patterns para não quebrar o FinOps (e não gerar custo errado).</div>
+          </div>
+          <span class="tag tag-ok">DX-first</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div class="quote">
+              <div class="strong">Regras de ouro</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li><b>Interaction ≠ custo</b> (é auditoria)</li>
+                <li><b>Ledger = financeiro</b> (Grafana lê daqui)</li>
+                <li><b>Mínimo existe</b> (Accumulator fecha o mínimo)</li>
+                <li><b>Idempotência</b> obrigatória no ledger</li>
+                <li><b>Lock por balde</b> para evitar corrida</li>
+              </ul>
+            </div>
+
+            <div class="callout">
+              <div class="strong">Anti-patterns (evitar)</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Dashboard somar tokens direto da Interaction</li>
+                <li>Gerar ledger por evento, ignorando mínimo</li>
+                <li>Recalcular histórico ao trocar pricing</li>
+                <li>Não enviar task_id/flow_id em automações</li>
+                <li>Retries sem idempotency_key → duplicidade</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="strong">Checklist para integrar um novo produtor de eventos (UI/Orquestrador)</div>
+          <div class="table-wrap" style="margin-top:10px">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Como validar</th>
+                  <th>Erro comum</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>source_type</b> correto</td>
+                  <td>Manual ou Automação</td>
+                  <td>Automação sem identificar → perde governança</td>
+                </tr>
+                <tr>
+                  <td><b>model</b> preenchido</td>
+                  <td>Mesmo nome do pricing</td>
+                  <td>Model name divergente → pricing não acha</td>
+                </tr>
+                <tr>
+                  <td><b>tokens_total</b> confiável</td>
+                  <td>Tokens input/output ou total</td>
+                  <td>Token “estimado” vira custo errado</td>
+                </tr>
+                <tr>
+                  <td><b>task_id/flow_id</b> na automação</td>
+                  <td>Obrigatório para Top Tasks/Flows</td>
+                  <td>Sem rastreio → não dá drill-down</td>
+                </tr>
+                <tr>
+                  <td><b>idempotency</b> (se aplicável)</td>
+                  <td>Chave única por fechamento</td>
+                  <td>Retries gerando duplicidade</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="callout tech-only">
+            <div class="strong">Recomendação de testes (mínimo)</div>
+            <ul class="bullets" style="margin-top:8px">
+              <li>Teste de fechamento: pending_tokens cruza min_tokens → gera 1+ lançamentos</li>
+              <li>Teste de loop: pending_tokens >= 2x min_tokens → gera múltiplos fechamentos</li>
+              <li>Teste de retry: mesma idempotency_key → não duplica ledger</li>
+              <li>Teste de concorrência: lock por balde evita condição de corrida</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- RUNBOOK -->
+      <section id="runbook" class="card dx-section" data-tags="runbook operacao troubleshooting incidentes custo divergente duplicidade retries pricing grafana accumulator lock">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🛠️ Runbook</div>
+            <div class="card-sub">Troubleshooting rápido: o que checar quando algo “não bate”.</div>
+          </div>
+          <span class="tag tag-scope">Operação</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div class="callout">
+              <div class="strong">Sintoma: “Custo não aparece”</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Confirmar que o dashboard consulta <b>CostLedger</b></li>
+                <li>Verificar filtro de período (janela)</li>
+                <li>Checar se o mínimo foi fechado (Accumulator)</li>
+                <li>Validar <code class="inline">ModelPricing</code> vigente</li>
+              </ul>
+              <div class="sep"></div>
+              <div class="tiny muted">
+                Dica: abra <code class="inline">/accumulators</code> e veja <code class="inline">pending_tokens</code>.
+              </div>
+            </div>
+
+            <div class="callout">
+              <div class="strong">Sintoma: “Custo duplicado”</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Verificar <code class="inline">idempotency_key</code> UNIQUE no ledger</li>
+                <li>Identificar retries do produtor (UI/Orquestrador)</li>
+                <li>Checar concorrência (lock por balde)</li>
+              </ul>
+              <div class="sep"></div>
+              <div class="tiny muted">
+                Em produção: ledger deve ser imutável e corrigido por estorno (não delete).
+              </div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="grid2">
+            <div class="quote">
+              <div class="strong">Checklist de verificação (ordem sugerida)</div>
+              <ol class="bullets" style="margin-top:8px">
+                <li>Ledger tem linhas no período?</li>
+                <li>Accumulator tem pending_tokens suficiente?</li>
+                <li>Pricing vigente existe para o model?</li>
+                <li>O produtor preenche source_type/task/flow?</li>
+              </ol>
+            </div>
+
+            <div class="callout tech-only">
+              <div class="strong">Boas práticas operacionais</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Dashboards sempre por views/agregações em ledger</li>
+                <li>Retenção: Interaction pode ser mais longa (auditoria); ledger é a base financeira</li>
+                <li>Alertas: spike detection e threshold por origem/model</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- DEMO -->
+      <section id="demo" class="card dx-section" data-tags="demo roteiro apresentacao executivo tecnico checklist telas finops ledger interactions accumulators pricing settings">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🎙️ Roteiro de demo</div>
+            <div class="card-sub">Fala pronta + sequência de telas (executivo e técnico).</div>
+          </div>
+          <span class="tag tag-demo">Apresentação</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div class="quote">
+              <div class="strong">Executivo (5 min)</div>
+              <ol class="bullets" style="margin-top:8px">
+                <li>Dashboard: “custo confiável”</li>
+                <li>Interactions: “não é caixa preta”</li>
+                <li>Accumulators: “mínimo de billing”</li>
+                <li>Ledger: “financeiro pronto”</li>
+                <li>Settings: “embed do Grafana”</li>
+              </ol>
+              <div class="sep"></div>
+              <div class="tiny muted">
+                Frase final: “Fase 1 entrega custo auditável e pronto para Grafana; Fase 2 adiciona receita/ROI; Fase 3 entra rateio por área.”
+              </div>
+            </div>
+
+            <div class="callout">
+              <div class="strong">Técnico (10–12 min)</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Ledger como fonte de verdade (não Interaction)</li>
+                <li>Accumulator com lock por balde</li>
+                <li>Idempotência: evitar duplicidade em retries</li>
+                <li>Pricing versionado por vigência</li>
+                <li>Top Tasks/Flows para governança</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="strong">Checklist de demo (clique para abrir)</div>
+          <div class="row" style="margin-top:10px">
+            <a class="link" href="http://127.0.0.1:5000/finops" target="_blank">📊 Abrir Dashboard</a>
+            <a class="link" href="http://127.0.0.1:5000/interactions" target="_blank">🧩 Abrir Interactions</a>
+            <a class="link" href="http://127.0.0.1:5000/accumulators" target="_blank">🪣 Abrir Accumulators</a>
+            <a class="link" href="http://127.0.0.1:5000/ledger" target="_blank">🧾 Abrir Ledger</a>
+            <a class="link" href="http://127.0.0.1:5000/pricing" target="_blank">🏷️ Abrir Pricing</a>
+            <a class="link" href="http://127.0.0.1:5000/settings" target="_blank">⚙️ Abrir Settings</a>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- ROADMAP -->
+      <section id="roadmap" class="card dx-section" data-tags="roadmap fases fase2 fase3 roi receita rateio governanca evolucao producao db migrations">
+        <div class="card-head">
+          <div>
+            <div class="card-title">🚀 Roadmap</div>
+            <div class="card-sub">Evolução incremental: custo → benefício/receita → ROI/rateio.</div>
+          </div>
+          <span class="tag tag-scope">Estratégia</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div class="callout">
+              <div class="strong">Fase 1 (agora)</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li>Custo auditável</li>
+                <li>Mínimo de billing (Accumulator)</li>
+                <li>CostLedger para Grafana</li>
+                <li>Manual vs Automação</li>
+              </ul>
+            </div>
+
+            <div class="quote">
+              <div class="strong">Fases seguintes</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li><b>Fase 2:</b> receita/benefício por execução</li>
+                <li><b>Fase 3:</b> rateio por área/centro de custo (ponderação)</li>
+                <li><b>Produção:</b> DB + migrations + observabilidade</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="callout tech-only">
+            <div class="strong">Prod-ready (checklist)</div>
+            <ul class="bullets" style="margin-top:8px">
+              <li>PostgreSQL + índices/particionamento</li>
+              <li>SQLAlchemy + Alembic (migrations)</li>
+              <li>Locks transacionais por balde</li>
+              <li>Idempotência rígida no ledger</li>
+              <li>Views/agregações para Grafana</li>
+              <li>RBAC + trilha de auditoria</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <!-- ASSETS -->
+      <section id="assets" class="card dx-section" data-tags="artefatos documentos rda pdf html drawio mermaid c4 storytelling requisitos">
+        <div class="card-head">
+          <div>
+            <div class="card-title">📎 Artefatos do projeto</div>
+            <div class="card-sub">Referências e documentos de apoio (para repo / governança).</div>
+          </div>
+          <span class="tag tag-scope">Docs</span>
+        </div>
+
+        <div class="card-body">
+          <div class="grid2">
+            <div>
+              <div class="strong">Documentos recomendados no repositório</div>
+              <ul class="bullets" style="margin-top:8px">
+                <li><span class="mono">/docs/RDA-001.pdf</span> — decisão arquitetural</li>
+                <li><span class="mono">/docs/diagrams/C4-Container.mermaid</span></li>
+                <li><span class="mono">/docs/diagrams/sequence.mermaid</span></li>
+                <li><span class="mono">/docs/portal/portal_dx.html</span> — este arquivo</li>
+                <li><span class="mono">README.md</span> — guia de execução</li>
+              </ul>
+              <div class="sep"></div>
+              <div class="tiny muted">
+                Dica: publicar em GitLab Pages / GitHub Pages facilita adoção (DX).
+              </div>
+            </div>
+
+            <div class="callout">
+              <div class="strong">Links (se estiverem na mesma pasta do portal)</div>
+              <div class="tiny muted" style="margin-top:6px">Ajuste os paths conforme seu repo.</div>
+              <div class="linkrow">
+                <a class="link" href="./README.md" target="_blank">📄 README</a>
+                <a class="link" href="./RDA-001 — Apuração de custo de IA (FinOps) no GABBI-2026011416115017.pdf" target="_blank">🧾 RDA-001 (PDF)</a>
+                <a class="link" href="./finops_c4_fase1.html" target="_blank">🗺️ C4 + Fluxo (HTML)</a>
+                <a class="link" href="./poc_finops_storytelling.html" target="_blank">🎬 Storytelling (HTML)</a>
+                <a class="link" href="./requisitos-fase1.html" target="_blank">🧩 Requisitos (HTML)</a>
+                <a class="link" href="./flow.drawio" target="_blank">🧱 Flow (drawio)</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="sep"></div>
+
+      <div class="tiny muted" style="padding: 0 2px 24px;">
+        *Portal DX híbrido (Negócio + Técnico) baseado no template Spread/Gabbi.
+        Conteúdo alinhado ao RDA-001 e aos diagramas (C4 + sequência + fluxo negocial).
+      </div>
+
+    </section>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  // ===== Toast =====
+  function toast(msg){
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.style.display = "block";
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(()=> t.style.display="none", 2600);
+  }
+
+  // ===== Mermaid init =====
+  function mermaidTheme(){
+    const app = document.getElementById("app");
+    return app.getAttribute("data-theme")==="dark" ? "dark" : "default";
+  }
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: mermaidTheme(),
+    securityLevel: "loose",
+    flowchart: { curve: "basis" }
+  });
+
+  // ===== Nav active =====
+  function setActiveNav(){
+    const ids = ["overview","value","quickstart","architecture","contracts","devguide","runbook","demo","roadmap","assets"];
+    const y = window.scrollY + 140;
+    let active = "overview";
+    for(const id of ids){
+      const el = document.getElementById(id);
+      if(!el) continue;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      if(top <= y) active = id;
+    }
+    document.querySelectorAll(".nav-item").forEach(a => a.classList.remove("active"));
+    const link = document.querySelector(`.nav-item[href="#${active}"]`);
+    if(link) link.classList.add("active");
+  }
+  window.addEventListener("scroll", setActiveNav, {passive:true});
+  setActiveNav();
+
+  // ===== Tech toggle =====
+  const toggleTech = document.getElementById("toggleTech");
+  function applyTech(){
+    document.querySelectorAll(".tech-only").forEach(el => {
+      el.style.display = toggleTech.checked ? "" : "none";
+    });
+    toast(toggleTech.checked ? "Detalhes técnicos: ON" : "Detalhes técnicos: OFF");
+  }
+  toggleTech.addEventListener("change", applyTech);
+  applyTech();
+
+  // ===== Theme toggle =====
+  const toggleTheme = document.getElementById("toggleTheme");
+  toggleTheme.addEventListener("change", () => {
+    const app = document.getElementById("app");
+    app.setAttribute("data-theme", toggleTheme.checked ? "dark" : "light");
+    // re-render mermaid to apply theme
+    rerenderMermaid();
+    toast(toggleTheme.checked ? "Dark mode ativado" : "Light mode ativado");
+  });
+
+  // ===== Search / filter sections =====
+  const search = document.getElementById("search");
+  function normalize(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+  function applySearch(){
+    const q = normalize(search.value.trim());
+    document.querySelectorAll(".dx-section").forEach(sec => {
+      const tags = normalize(sec.getAttribute("data-tags") || "");
+      const title = normalize(sec.querySelector(".card-title")?.textContent || "");
+      const body = normalize(sec.textContent || "");
+      const hit = !q || tags.includes(q) || title.includes(q) || body.includes(q);
+      sec.style.display = hit ? "" : "none";
+    });
+  }
+  search.addEventListener("input", applySearch);
+
+  // ===== Copy deep link =====
+  function copyLink(){
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(()=>{
+      toast("Link copiado: " + url);
+    }).catch(()=>{
+      toast("Não foi possível copiar. Selecione e copie manualmente.");
+    });
+  }
+
+  // ===== Pan/Zoom =====
+  let panZoom = [];
+  let activeDiagram = "c4";
+
+  function setActive(id){
+    activeDiagram = id;
+    toast("Diagrama ativo: " + id.toUpperCase());
+  }
+
+  function setupPanZoom(){
+    panZoom.forEach(p => p.destroy && p.destroy());
+    panZoom = [];
+
+    document.querySelectorAll(".mermaid").forEach((el)=>{
+      const svg = el.querySelector("svg");
+      if(!svg) return;
+
+      // Ensure viewBox exists
+      if(!svg.getAttribute("viewBox")){
+        const w = svg.getAttribute("width") || 1200;
+        const h = svg.getAttribute("height") || 800;
+        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      }
+
+      const inst = svgPanZoom(svg, {
+        zoomEnabled: true,
+        controlIconsEnabled: false,
+        fit: true,
+        center: true,
+        minZoom: 0.2,
+        maxZoom: 12
+      });
+      panZoom.push(inst);
+    });
+  }
+
+  function resetZoom(){
+    panZoom.forEach(inst => {
+      inst.resetZoom();
+      inst.fit();
+      inst.center();
+    });
+    toast("Zoom resetado");
+  }
+
+  function exportActiveSvg(){
+    const target = document.querySelector(`.mermaid[data-diagram="${activeDiagram}"] svg`);
+    if(!target){ toast("SVG ainda não pronto"); return; }
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(target);
+
+    const blob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gabbi_finops_${activeDiagram}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("Exportado SVG: " + activeDiagram.toUpperCase());
+  }
+
+  // ===== Mermaid re-render for theme changes =====
+  function rerenderMermaid(){
+    // Extract raw diagram text from each container and re-render
+    const nodes = document.querySelectorAll(".mermaid");
+    const defs = [];
+    nodes.forEach((el, idx)=>{
+      const raw = el.getAttribute("data-raw");
+      if(raw) defs.push({el, raw});
+      else {
+        // save initial raw text once
+        const txt = el.textContent;
+        el.setAttribute("data-raw", txt);
+        defs.push({el, raw: txt});
+      }
+    });
+
+    // Reset mermaid
+    mermaid.initialize({ startOnLoad: false, theme: mermaidTheme(), securityLevel:"loose", flowchart:{curve:"basis"} });
+
+    // Clear and re-render
+    defs.forEach((d, i)=>{
+      d.el.innerHTML = d.raw;
+    });
+
+    mermaid.run({ querySelector: ".mermaid" }).then(()=>{
+      setupPanZoom();
+    }).catch(()=>{
+      // ignore
+    });
+  }
+
+  // Mermaid renders async; poll until SVG exists then enable pan/zoom
+  (function poll(){
+    const allReady = [...document.querySelectorAll(".mermaid")].every(el => el.querySelector("svg"));
+    if(allReady){ setupPanZoom(); return; }
+    setTimeout(poll, 250);
+  })();
+</script>
+</body>
+</html>
