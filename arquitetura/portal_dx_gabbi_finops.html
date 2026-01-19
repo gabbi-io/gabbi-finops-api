@@ -338,6 +338,109 @@
     @media (max-width: 640px){
       .kpis{grid-template-columns: 1fr}
     }
+
+      /* ===== Copiloto DX ===== */
+.dxbot-fab{
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  background: linear-gradient(180deg, var(--orange-2), var(--orange));
+  color:#fff;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.dxbot-panel{
+  position: fixed;
+  right: 18px;
+  bottom: 82px;
+  z-index: 60;
+  width: min(520px, calc(100vw - 36px));
+  height: 560px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: none;
+}
+
+.dxbot-head{
+  display:flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(108,60,255,.04);
+}
+
+.dxbot-title{font-weight: 900;}
+.dxbot-sub{font-size: 12px; color: var(--muted); margin-top: 2px;}
+.dxbot-actions{display:flex; gap:8px; align-items:center;}
+.dxbot-btn{
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.dxbot-msgs{
+  padding: 12px;
+  height: 440px;
+  overflow: auto;
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dxbot-bubble{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 10px;
+  background: rgba(108,60,255,.04);
+}
+.dxbot-bubble.user{ background: rgba(255,138,0,.08); }
+.dxbot-bubble .meta{ font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.dxbot-bubble .txt{ font-size: 13px; color: var(--text); white-space: pre-wrap; }
+.dxbot-bubble .refs{ margin-top: 8px; font-size: 12px; color: var(--muted); }
+.dxbot-bubble .refs a{ text-decoration: underline; }
+
+.dxbot-input{
+  display:flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.dxbot-input input{
+  flex:1;
+  border:1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+}
+.dxbot-input button{
+  border:1px solid rgba(255,138,0,.22);
+  background: linear-gradient(180deg, var(--orange-2), var(--orange));
+  color:#fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
   </style>
 
   <!-- Mermaid -->
@@ -345,6 +448,28 @@
   <!-- Pan/Zoom -->
   <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 </head>
+<!-- ===== Copiloto DX (UI) ===== -->
+<button id="dxBotFab" class="dxbot-fab" title="Copiloto DX">💬</button>
+
+<div id="dxBotPanel" class="dxbot-panel" aria-hidden="true">
+  <div class="dxbot-head">
+    <div>
+      <div class="dxbot-title">Copiloto DX — GABBI FinOps</div>
+      <div class="dxbot-sub">Base: anexos do portal (Fase 1)</div>
+    </div>
+    <div class="dxbot-actions">
+      <button class="dxbot-btn" id="dxBotReload">↻ Recarregar base</button>
+      <button class="dxbot-btn" id="dxBotClose">✕</button>
+    </div>
+  </div>
+
+  <div id="dxBotMsgs" class="dxbot-msgs"></div>
+
+  <div class="dxbot-input">
+    <input id="dxBotText" placeholder="Pergunte: 'o que é CostLedger?', 'como fecha o mínimo?', 'anti-patterns'..." />
+    <button id="dxBotSend">Enviar</button>
+  </div>
+</div>
 
 <body>
 <div class="layout" id="app" data-theme="light">
@@ -1285,6 +1410,303 @@ sequenceDiagram
 <div id="toast" class="toast"></div>
 
 <script>
+    // ===== Copiloto DX (sem LLM) =====
+  const DX_SOURCES = [
+    { id: "requisitos", title: "Requisitos Fase 1", url: "./requisitos-fase1.html" },
+    { id: "c4fase1", title: "C4 + Fluxo (HTML)", url: "./finops_c4_fase1.html" },
+    { id: "story", title: "Storytelling", url: "./poc_finops_storytelling.html" },
+    // Se quiser, adicione também mermaids puros:
+    // { id: "c4mmd", title: "C4 (Mermaid)", url: "./C4 - Container.mermaid" },
+    // { id: "seqmmd", title: "Sequência (Mermaid)", url: "./diagrama de sequencia.mermaid" },
+    // { id: "flowmmd", title: "Flow Negocial (Mermaid)", url: "./flow negocial custo.mermaid" },
+  ];
+
+  const dxFab = document.getElementById("dxBotFab");
+  const dxPanel = document.getElementById("dxBotPanel");
+  const dxClose = document.getElementById("dxBotClose");
+  const dxReload = document.getElementById("dxBotReload");
+  const dxMsgs = document.getElementById("dxBotMsgs");
+  const dxText = document.getElementById("dxBotText");
+  const dxSend = document.getElementById("dxBotSend");
+
+  let DX_KB = []; // {sourceId, sourceTitle, sourceUrl, chunk, tokens[]}
+
+  function dxOpen(){
+    dxPanel.style.display = "block";
+    dxPanel.setAttribute("aria-hidden","false");
+  }
+  function dxClosePanel(){
+    dxPanel.style.display = "none";
+    dxPanel.setAttribute("aria-hidden","true");
+  }
+
+  dxFab.addEventListener("click", () => {
+    if(dxPanel.style.display === "block") dxClosePanel();
+    else dxOpen();
+  });
+  dxClose.addEventListener("click", dxClosePanel);
+
+ function stripHtml(html){
+  const doc = new DOMParser().parseFromString(html, "text/html");
+
+  // remove ruídos típicos
+  doc.querySelectorAll("script, style, noscript, svg, canvas").forEach(n => n.remove());
+
+  // remove navegação/rodapés (ajuste se quiser)
+  doc.querySelectorAll("nav, footer, header, aside").forEach(n => n.remove());
+
+  // remove atributos e tags que “poluem”
+  doc.querySelectorAll("[style]").forEach(n => n.removeAttribute("style"));
+
+  // pega texto
+  const text = (doc.body?.innerText || "")
+    .replace(/\u00A0/g, " ")               // nbsp
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
+}
+
+  function normalize(s){
+    return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  }
+  function tokenize(s){
+    return normalize(s)
+      .replace(/[^a-z0-9áéíóúàâêôãõç| ]/gi," ")
+      .split(/\s+/)
+      .filter(t => t.length >= 3 && !["para","como","isso","dessa","deste","fase","pois","quando","onde","qual","quais","com","sem","uma","que","não","sao","ser","mais"].includes(t));
+  }
+
+  function chunkText(text, size=900, overlap=120){
+    const chunks = [];
+    let i = 0;
+    while(i < text.length){
+      const slice = text.slice(i, i+size);
+      chunks.push(slice);
+      i += (size - overlap);
+    }
+    return chunks.map(c => c.trim()).filter(Boolean);
+  }
+
+  async function dxBuildKB(){
+    DX_KB = [];
+    dxBotAdd("bot", "Carregando base de conhecimento dos anexos…");
+
+    for(const src of DX_SOURCES){
+      try{
+        const res = await fetch(src.url, { cache: "no-store" });
+        const raw = await res.text();
+        const plain = src.url.endsWith(".html") ? stripHtml(raw) : raw;
+        const chunks = chunkText(plain, 900, 140);
+
+        for(const c of chunks){
+          const toks = tokenize(c);
+          if(toks.length < 5) continue;
+          DX_KB.push({
+            sourceId: src.id,
+            sourceTitle: src.title,
+            sourceUrl: src.url,
+            chunk: c,
+            tokens: toks
+          });
+        }
+      }catch(e){
+        dxBotAdd("bot", `⚠️ Não consegui carregar: ${src.title} (${src.url}). Se estiver usando file://, sirva via HTTP.`);
+      }
+    }
+    dxBotAdd("bot", `Base pronta ✅ (${DX_KB.length} trechos indexados). Pergunte algo como: "o que é CostLedger?"`);
+  }
+
+  function scoreChunk(qTokens, chunkTokens){
+    // pontuação simples: interseção + bônus por termos raros (aprox.)
+    let score = 0;
+    const set = new Set(chunkTokens);
+    for(const t of qTokens){
+      if(set.has(t)) score += 3;
+    }
+    // bônus por termos "assinatura"
+    const bonusTerms = ["costledger","interaction","accumulator","billingaccumulator","idempotency","idempotency_key","grafana","min_tokens","bucket","balde","lock","pricing","modelpricing"];
+    for(const b of bonusTerms){
+      if(qTokens.includes(b) && set.has(b)) score += 6;
+    }
+    return score;
+  }
+
+  function retrieve(query, topK=4){
+  const qTokens = tokenize(query);
+  if(qTokens.length === 0) return [];
+
+  const ranked = DX_KB
+    .map(item => ({...item, _score: scoreChunk(qTokens, item.tokens)}))
+    .filter(x => x._score > 0)
+    .sort((a,b)=> b._score - a._score);
+
+  const picked = [];
+  const usedSources = new Set();
+
+  for(const r of ranked){
+    if(picked.length >= topK) break;
+    // prioriza diversidade de fontes
+    if(!usedSources.has(r.sourceId) || picked.length < 2){
+      picked.push(r);
+      usedSources.add(r.sourceId);
+    }
+  }
+  return picked;
+}
+
+  function formatAnswer(query, hits){
+  const qTokens = tokenize(query);
+
+  if(hits.length === 0){
+    return {
+      html: `
+        <div><b>Não achei evidência direta nos anexos carregados.</b></div>
+        <div style="margin-top:8px" class="muted">
+          Tente termos como: <code class="inline">CostLedger</code>, <code class="inline">Accumulator</code>,
+          <code class="inline">mínimo</code>, <code class="inline">idempotency_key</code>, <code class="inline">lock por balde</code>.
+        </div>
+      `,
+      refs: []
+    };
+  }
+
+  // mini-resumo “DX”
+  const summary = `
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+      <span class="tag tag-scope">Resposta baseada nos anexos</span>
+      <span class="tag tag-ok">${hits.length} evidência(s)</span>
+    </div>
+
+    <div class="quote">
+      <div class="strong">Resumo</div>
+      <div class="tiny muted" style="margin-top:6px">
+        Encontrei trechos nos documentos que batem com sua pergunta.
+        Abaixo estão as evidências mais relevantes (com link para a fonte).
+      </div>
+    </div>
+  `;
+
+  const evidenceCards = hits.map((h, i) => {
+    const excerpt = bestExcerpt(h.chunk, qTokens, 280);
+    return `
+      <div class="callout" style="margin-top:10px">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start">
+          <div>
+            <div class="strong">#${i+1} — ${h.sourceTitle}</div>
+            <div class="tiny muted">Score: ${h._score}</div>
+          </div>
+          <a class="btn ghost" href="${h.sourceUrl}" target="_blank" style="padding:6px 10px; font-size:12px">Abrir fonte</a>
+        </div>
+        <div class="tiny muted" style="margin-top:8px; line-height:1.45">
+          ${escapeHtml(excerpt)}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const next = `
+    <div style="margin-top:12px" class="callout">
+      <div class="strong">Próximos passos</div>
+      <ul class="bullets" style="margin-top:8px">
+        <li>Quer a versão <b>executiva</b> (1 min) ou <b>técnica/RDA</b> (5 min) dessa resposta?</li>
+        <li>Posso também responder já apontando a seção do portal (ex.: <code class="inline">#contracts</code>, <code class="inline">#runbook</code>).</li>
+      </ul>
+    </div>
+  `;
+
+  return {
+    html: `<div><b>Pergunta:</b> ${escapeHtml(query)}</div>${summary}${evidenceCards}${next}`,
+    refs: hits.map(h => ({title: h.sourceTitle, url: h.sourceUrl}))
+  };
+}
+
+
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"']/g, m => ({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  }[m]));
+}
+
+
+  function dxBotAdd(who, content, refs=[]){
+  const wrap = document.createElement("div");
+  wrap.className = `dxbot-bubble ${who === "user" ? "user" : "bot"}`;
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = who === "user" ? "Você" : "Copiloto DX";
+
+  const txt = document.createElement("div");
+  txt.className = "txt";
+
+  // usuário sempre como texto puro
+  if(who === "user") txt.textContent = content;
+  else txt.innerHTML = content; // bot: HTML formatado
+
+  wrap.appendChild(meta);
+  wrap.appendChild(txt);
+
+  if(refs && refs.length){
+    const r = document.createElement("div");
+    r.className = "refs";
+    r.innerHTML = "Fontes: " + refs.map(x => `<a href="${x.url}" target="_blank">${x.title}</a>`).join(" • ");
+    wrap.appendChild(r);
+  }
+
+  dxMsgs.appendChild(wrap);
+  dxMsgs.scrollTop = dxMsgs.scrollHeight;
+}
+
+function bestExcerpt(text, qTokens, maxLen=260){
+  const clean = text.replace(/\s+/g, " ").trim();
+  if(clean.length <= maxLen) return clean;
+
+  // tenta achar a primeira ocorrência de algum token da pergunta
+  const norm = normalize(clean);
+  let idx = -1;
+  for(const t of qTokens){
+    const p = norm.indexOf(t);
+    if(p !== -1){ idx = p; break; }
+  }
+  if(idx === -1) idx = 0;
+
+  const start = Math.max(0, idx - 80);
+  const slice = clean.slice(start, start + maxLen);
+  return (start > 0 ? "…" : "") + slice + (start + maxLen < clean.length ? "…" : "");
+}
+
+
+  async function dxAsk(){
+    const q = dxText.value.trim();
+    if(!q) return;
+
+    dxBotAdd("user", q);
+    dxText.value = "";
+
+    const hits = retrieve(q, 4);
+    const ans = formatAnswer(q, hits);
+dxBotAdd("bot", ans.html, ans.refs);
+
+  }
+
+  dxSend.addEventListener("click", dxAsk);
+  dxText.addEventListener("keydown", (e)=>{ if(e.key === "Enter") dxAsk(); });
+  dxReload.addEventListener("click", dxBuildKB);
+
+  // auto-load KB when opening first time
+  let __dxLoaded = false;
+  dxFab.addEventListener("click", async ()=>{
+    if(!__dxLoaded){
+      __dxLoaded = true;
+      await dxBuildKB();
+    }
+  });
   // ===== Toast =====
   function toast(msg){
     const t = document.getElementById("toast");
