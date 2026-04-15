@@ -4,6 +4,7 @@ import json
 import math
 import os
 import random
+from calendar import monthrange
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -34,7 +35,11 @@ DEFAULT_FLOWS = [
 ]
 
 SCENARIOS = ("normal", "growth", "explosion")
-DATA_SOURCES = ("fake_static", "fake_live")
+DATA_SOURCES = ("fake_static", "fake_live", "real")
+ROI_HOURLY_RATE_BRL = 45.0
+ROI_MINUTES_SAVED_PER_INTERACTION = 6.0
+BUDGET_MONTHLY_BRL = 10000.0
+BUDGET_ALERT_PERCENT = 80.0
 
 
 def _now() -> datetime:
@@ -361,6 +366,19 @@ def summarize(state: Dict[str, Any]) -> Dict[str, Any]:
     ]
 
     total_cost = sum(float(r["amount"]) for r in ledger)
+    interaction_rows_count = len(interactions)
+    estimated_savings_brl = interaction_rows_count * (ROI_MINUTES_SAVED_PER_INTERACTION / 60.0) * ROI_HOURLY_RATE_BRL
+    net_value_brl = estimated_savings_brl - total_cost
+    roi_percent = ((net_value_brl / total_cost) * 100.0) if total_cost > 0 else 0.0
+
+    today = _now()
+    month_days = max(1, monthrange(today.year, today.month)[1])
+    budget_used_brl = total_cost
+    budget_used_percent = (budget_used_brl / BUDGET_MONTHLY_BRL * 100.0) if BUDGET_MONTHLY_BRL > 0 else 0.0
+    budget_forecast_brl = (budget_used_brl / max(1, days)) * month_days
+    budget_forecast_percent = (budget_forecast_brl / BUDGET_MONTHLY_BRL * 100.0) if BUDGET_MONTHLY_BRL > 0 else 0.0
+    budget_alert = budget_used_percent >= BUDGET_ALERT_PERCENT
+    forecast_alert = budget_forecast_percent >= 100.0
 
     by_source: Dict[str, float] = {}
     by_model: Dict[str, float] = {}
@@ -392,6 +410,12 @@ def summarize(state: Dict[str, Any]) -> Dict[str, Any]:
         ds = d.strftime("%Y-%m-%d")
         series_days.append({"day": ds, "cost": _money(by_day.get(ds, 0.0))})
 
+    alert_messages = []
+    if budget_alert:
+        alert_messages.append(f"Budget mensal acima de {int(BUDGET_ALERT_PERCENT)}%.")
+    if forecast_alert:
+        alert_messages.append("Forecast mensal acima do orçamento.")
+
     return {
         "tenant_id": state["tenant_id"],
         "data_source": state.get("data_source", "fake_static"),
@@ -403,7 +427,16 @@ def summarize(state: Dict[str, Any]) -> Dict[str, Any]:
             "manual_cost": _money(by_source.get("MANUAL", 0.0)),
             "automation_cost": _money(by_source.get("AUTOMATION", 0.0)),
             "ledger_rows": len(ledger),
-            "interaction_rows": len(interactions),
+            "interaction_rows": interaction_rows_count,
+            "estimated_savings_brl": _money(estimated_savings_brl),
+            "net_value_brl": _money(net_value_brl),
+            "roi_percent": _money(roi_percent),
+            "budget_monthly_brl": _money(BUDGET_MONTHLY_BRL),
+            "budget_used_brl": _money(budget_used_brl),
+            "budget_used_percent": _money(budget_used_percent),
+            "budget_forecast_brl": _money(budget_forecast_brl),
+            "budget_forecast_percent": _money(budget_forecast_percent),
+            "budget_alert_threshold_percent": _money(BUDGET_ALERT_PERCENT),
         },
         "series": {
             "cost_by_day": series_days,
@@ -417,6 +450,33 @@ def summarize(state: Dict[str, Any]) -> Dict[str, Any]:
             "interaction_rows": sorted(interactions, key=lambda x: x["occurred_at"], reverse=True)[:200],
             "accumulators": _accumulator_table(state),
             "pricing": state["pricing"],
+        },
+        "alerts": {
+            "budget_alert": budget_alert,
+            "forecast_alert": forecast_alert,
+            "messages": alert_messages,
+        },
+        "optimization": {
+            "top_recommendation": None,
+        },
+        "showback": {
+            "by_project": [],
+            "by_agent": [],
+            "by_source": [
+                {"label": s, "amount_brl": _money(c)}
+                for s, c in sorted(by_source.items(), key=lambda x: x[1], reverse=True)
+            ],
+        },
+        "recommendations": [],
+        "source": "fake",
+        "filters": {
+            "days": days,
+            "project_key": None,
+            "agent_name": None,
+            "pricing_enabled": True,
+            "ledger_enabled": True,
+            "accumulators_enabled": True,
+            "data_source": state.get("data_source", "fake_static"),
         },
         "notes": [
             "PoC 100% fake: funcionalidades identicas ao real da Fase 1 (Interaction -> Accumulator -> CostLedger).",

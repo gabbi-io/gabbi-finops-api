@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
+import real_provider as real
 import simulator as sim
 
 app = Flask(__name__)
@@ -15,6 +16,18 @@ def _state():
 
 def _save(state):
     sim.save_state(state)
+
+
+def _is_real_mode(state):
+    return state.get("data_source") == "real"
+
+
+def _dataset(state):
+    if _is_real_mode(state):
+        data = real.summarize_real(days=int(state.get("days", 30)))
+        data["grafana_embed_url"] = state.get("grafana_embed_url", data.get("grafana_embed_url", ""))
+        return data
+    return sim.summarize(state)
 
 
 @app.get("/health")
@@ -44,28 +57,28 @@ def dashboard():
         )
         _save(state)
 
-    dataset = sim.summarize(state)
+    dataset = _dataset(state)
     return render_template("finops_dashboard.html", dataset=dataset)
 
 
 @app.route("/ledger")
 def ledger():
     state = _state()
-    dataset = sim.summarize(state)
+    dataset = _dataset(state)
     return render_template("finops_ledger.html", dataset=dataset)
 
 
 @app.route("/interactions")
 def interactions():
     state = _state()
-    dataset = sim.summarize(state)
+    dataset = _dataset(state)
     return render_template("finops_interactions.html", dataset=dataset)
 
 
 @app.route("/accumulators")
 def accumulators():
     state = _state()
-    dataset = sim.summarize(state)
+    dataset = _dataset(state)
     return render_template("finops_accumulators.html", dataset=dataset)
 
 
@@ -78,11 +91,14 @@ def pricing():
         min_tokens = int(request.form.get("min_tokens") or "0")
         min_cost = float(request.form.get("min_cost") or "0")
         if model and min_tokens > 0 and min_cost >= 0:
-            sim.update_pricing(state, model=model, min_tokens=min_tokens, min_cost=min_cost)
-            _save(state)
+            if _is_real_mode(state):
+                real.upsert_pricing(model=model, min_tokens=min_tokens, min_cost_brl=min_cost)
+            else:
+                sim.update_pricing(state, model=model, min_tokens=min_tokens, min_cost=min_cost)
+                _save(state)
         return redirect(url_for("pricing"))
 
-    dataset = sim.summarize(state)
+    dataset = _dataset(state)
     return render_template("finops_pricing.html", dataset=dataset)
 
 
@@ -94,7 +110,7 @@ def settings():
         sim.set_grafana_url(state, url)
         _save(state)
         return redirect(url_for("settings"))
-    dataset = sim.summarize(state)
+    dataset = _dataset(state)
     return render_template("finops_settings.html", dataset=dataset)
 
 
@@ -103,12 +119,14 @@ def settings():
 @app.route("/api/state")
 def api_state():
     state = _state()
-    return jsonify(sim.summarize(state))
+    return jsonify(_dataset(state))
 
 
 @app.route("/api/simulate/reset", methods=["POST"])
 def api_reset():
     state = _state()
+    if _is_real_mode(state):
+        return jsonify({"ok": False, "message": "Modo real não permite reset de simulação.", "state": _dataset(state)}), 409
     sim.reset_live(state)
     _save(state)
     return jsonify({"ok": True, "message": "Estado resetado (live).", "state": sim.summarize(state)})
@@ -117,6 +135,8 @@ def api_reset():
 @app.route("/api/simulate/step", methods=["POST"])
 def api_step():
     state = _state()
+    if _is_real_mode(state):
+        return jsonify({"ok": False, "message": "Modo real não permite simulação.", "state": _dataset(state)}), 409
     payload = request.get_json(silent=True) or {}
     steps = int(payload.get("steps") or 10)
     spike = bool(payload.get("spike") or False)
@@ -128,6 +148,8 @@ def api_step():
 @app.route("/api/simulate/spike", methods=["POST"])
 def api_spike():
     state = _state()
+    if _is_real_mode(state):
+        return jsonify({"ok": False, "message": "Modo real não permite spike fake.", "state": _dataset(state)}), 409
     out = sim.step_live(state, steps=30, spike=True)
     _save(state)
     return jsonify({"ok": True, "result": out, "state": sim.summarize(state)})

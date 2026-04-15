@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% block page_title %}FinOps – Custo (Fase 1){% endblock %}
-{% block page_sub %}Funcionalidades idênticas ao produto final, usando dados mockados (PoC).{% endblock %}
+{% block page_sub %}Agora com ROI automático, budget/alertas, showback e sugestão de otimização por modelo.{% endblock %}
 
 {% block content %}
 
 <div class="controls">
   <form class="controls-row" method="get" action="{{ url_for('dashboard') }}">
     <div class="control">
-      <label>Fonte (ainda fake)</label>
+      <label>Fonte</label>
       <select name="data_source">
-        <option value="fake_static" {{ 'selected' if dataset.data_source=='fake_static' else '' }}>Fake • Estático (apresentação)</option>
+        <option value="real" {{ 'selected' if dataset.data_source=='real' else '' }}>Real • Produção</option>
         <option value="fake_live" {{ 'selected' if dataset.data_source=='fake_live' else '' }}>Fake • Live (simulação)</option>
       </select>
-      <div class="help">Live permite simular entrada de eventos e ver o ledger fechar.</div>
+      <div class="help">No modo real, os cards e gráficos usam Postgres.</div>
     </div>
 
     <div class="control">
@@ -22,7 +22,7 @@
         <option value="growth" {{ 'selected' if dataset.scenario=='growth' else '' }}>Crescimento diário</option>
         <option value="explosion" {{ 'selected' if dataset.scenario=='explosion' else '' }}>Explosão de custo (spike)</option>
       </select>
-      <div class="help">Ótimo para storytelling com o cliente.</div>
+      <div class="help">No modo real, o cenário é informativo.</div>
     </div>
 
     <div class="control">
@@ -46,6 +46,7 @@
     <button class="btn" data-action="simulate" data-steps="120">Simular 1 hora</button>
     <button class="btn danger" data-action="spike">Explodir custo</button>
     <button class="btn ghost" data-action="reset">Reset Live</button>
+    <button class="btn ghost" data-action="refresh">Atualizar</button>
     <div class="status" id="status"></div>
   </div>
 </div>
@@ -70,6 +71,139 @@
     <div class="kpi-label">Auditabilidade</div>
     <div class="kpi-value" id="kpiInteractions">{{ dataset.kpis.interaction_rows }}</div>
     <div class="kpi-sub">Interações no período</div>
+  </div>
+</div>
+
+<div class="kpis" style="margin-top:14px;">
+  <div class="kpi">
+    <div class="kpi-label">Economia estimada</div>
+    <div class="kpi-value" id="kpiEstimatedSavings">R$ {{ dataset.kpis.estimated_savings_brl }}</div>
+    <div class="kpi-sub">Baseada em tempo poupado por interação</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">ROI</div>
+    <div class="kpi-value" id="kpiRoi">{{ dataset.kpis.roi_percent }}%</div>
+    <div class="kpi-sub">Valor líquido: <span id="kpiNetValue">R$ {{ dataset.kpis.net_value_brl }}</span></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Budget mensal</div>
+    <div class="kpi-value" id="kpiBudgetUsed">R$ {{ dataset.kpis.budget_used_brl }}</div>
+    <div class="kpi-sub">
+      de <span id="kpiBudgetMonthly">R$ {{ dataset.kpis.budget_monthly_brl }}</span> •
+      <span id="kpiBudgetPercent">{{ dataset.kpis.budget_used_percent }}%</span>
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Forecast mensal</div>
+    <div class="kpi-value" id="kpiBudgetForecast">R$ {{ dataset.kpis.budget_forecast_brl }}</div>
+    <div class="kpi-sub">Projeção até o fim do mês</div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:14px;">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Budget & Alertas</div>
+        <div class="card-sub">Consumo real x orçamento mensal configurado.</div>
+      </div>
+      <div class="pill" id="budgetAlertBadge">
+        {% if dataset.alerts.budget_alert or dataset.alerts.forecast_alert %}ALERTA{% else %}OK{% endif %}
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="tiny muted">Execução do budget</div>
+      <div style="margin:10px 0 6px 0; font-weight:700;">
+        <span id="budgetUsedText">R$ {{ dataset.kpis.budget_used_brl }}</span>
+        <span class="muted"> de </span>
+        <span id="budgetMonthlyText">R$ {{ dataset.kpis.budget_monthly_brl }}</span>
+      </div>
+      <div style="width:100%; background:#ececf4; border-radius:999px; overflow:hidden; height:12px;">
+        <div id="budgetProgressBar" style="height:12px; width: {{ dataset.kpis.budget_used_percent }}%; background:#7c5cff;"></div>
+      </div>
+      <div class="tiny muted" style="margin-top:8px;">
+        <span id="budgetThresholdText">Limiar de alerta: {{ dataset.kpis.budget_alert_threshold_percent }}%</span> •
+        <span id="budgetForecastText">Forecast: R$ {{ dataset.kpis.budget_forecast_brl }}</span>
+      </div>
+
+      <div id="budgetAlertBox" class="hint" style="margin-top:12px;">
+        {% if dataset.alerts.messages %}
+          {% for msg in dataset.alerts.messages %}
+            <div>{{ msg }}</div>
+          {% endfor %}
+        {% else %}
+          <div>Sem alertas ativos no momento.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Sugestão de modelo mais barato</div>
+        <div class="card-sub">Heurística de otimização com base no uso observado.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div id="optimizationRecommendation">
+        {% if dataset.optimization.top_recommendation %}
+          <div class="list-row">
+            <span>{{ dataset.optimization.top_recommendation.summary }}</span>
+            <b>Economia: R$ {{ dataset.optimization.top_recommendation.estimated_savings_brl }}</b>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            Modelo atual: <b>{{ dataset.optimization.top_recommendation.current_model }}</b> →
+            sugerido: <b>{{ dataset.optimization.top_recommendation.suggested_model }}</b> •
+            cobertura estimada: <b>{{ dataset.optimization.top_recommendation.coverage_percent }}%</b>
+          </div>
+        {% else %}
+          <div class="placeholder">
+            <div class="placeholder-title">Sem recomendação ativa</div>
+            <div class="placeholder-sub">Devemos cadastrar os modelos atuais e substitutos no pricing para habilitar a comparação.</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:14px;">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Showback / Chargeback</div>
+        <div class="card-sub">Rateio observável por projeto, agente e origem com base no consumo real.</div>
+      </div>
+    </div>
+    <div class="card-body two-col">
+      <div>
+        <div class="tiny muted">Por projeto</div>
+        <div class="list" id="showbackProjects">
+          {% for r in dataset.showback.by_project %}
+            <div class="list-row"><span>{{ r.label }}</span><b>R$ {{ r.amount_brl }}</b></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="tiny muted">Por agente</div>
+        <div class="list" id="showbackAgents">
+          {% for r in dataset.showback.by_agent %}
+            <div class="list-row"><span>{{ r.label }}</span><b>R$ {{ r.amount_brl }}</b></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="card-body" style="padding-top:0;">
+      <div>
+        <div class="tiny muted">Por origem</div>
+        <div class="list" id="showbackSources">
+          {% for r in dataset.showback.by_source %}
+            <div class="list-row"><span>{{ r.label }}</span><b>R$ {{ r.amount_brl }}</b></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -152,7 +286,6 @@
     {% else %}
       <div class="placeholder">
         <div class="placeholder-title">Sem Grafana configurado</div>
-        <div class="placeholder-sub">A PoC já está preparada para embutir o dashboard real via iframe, sem mudar a UX.</div>
       </div>
     {% endif %}
   </div>

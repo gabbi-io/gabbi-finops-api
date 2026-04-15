@@ -45,7 +45,7 @@ services:
       POSTGRES_USER: "${POSTGRES_USER:-gabbi}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-gabbi}"
     ports:
-      - "5432:5432"
+      - "${DB_EXTERNAL_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Executa SQLs iniciais no primeiro boot do volume

@@ -1,8 +1,8 @@
 {
   "tenant_id": "spread-tecnologia",
-  "data_source": "fake_live",
-  "scenario": "explosion",
-  "days": 30,
+  "data_source": "real",
+  "scenario": "normal",
+  "days": 90,
   "grafana_embed_url": "",
   "pricing": [
     {
