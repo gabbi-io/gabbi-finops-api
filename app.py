@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import os
 from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask_cors import CORS
 
 import real_provider as real
 import simulator as sim
 
+
+def _allowed_origins():
+    raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["http://localhost:5173"]
+
+
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+CORS(app, resources={r"/api/*": {"origins": _allowed_origins()}})
 
 
 def _state():
