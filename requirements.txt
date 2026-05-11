@@ -1,20 +1,5 @@
-# Core web
-flask==3.0.2
-flask-cors==4.0.0
-
-# Server WSGI (produção)
-gunicorn==21.2.0
-
-# Azure OpenAI / OpenAI SDK
-openai==1.12.0
-
-# HTTP / Utils
-requests==2.31.0
-python-dotenv==1.0.1
-
-# JSON / validação (se você valida payloads)
-pydantic==2.6.1
-
-# Logs estruturados (opcional, mas recomendado)
-structlog==24.1.0
+Flask>=3.0.0
+flask-cors>=4.0.0
 psycopg2-binary>=2.9.9
+bcrypt>=4.1.0
+gunicorn>=21.2.0

@@ -4,6 +4,7 @@ import os
 
 import psycopg2
 from flask import Flask, jsonify, redirect, render_template, request, url_for, Response
+from flask_cors import CORS
 import bcrypt
 from flask import session, redirect, url_for, render_template, request, flash
 from functools import wraps
@@ -13,6 +14,66 @@ from real_provider import summarize_real, upsert_pricing, ingest_usage, get_fino
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.secret_key = "gabbi-super-secret-key-2026"
+
+# -------------------------------------------------------------------
+# CORS
+# -------------------------------------------------------------------
+# Permite que o frontend React/Node em ambiente local consuma a API Python.
+# Em produção, informe FINOPS_CORS_ORIGINS com a lista de origens permitidas, separadas por vírgula.
+# Exemplo:
+# FINOPS_CORS_ORIGINS=http://localhost:5173,http://192.168.230.107:5173,https://finops.gabbi.io
+_allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "FINOPS_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://192.168.230.107:5173"
+    ).split(",")
+    if origin.strip()
+]
+
+CORS(
+    app,
+    resources={r"/api/*": {"origins": _allowed_origins}},
+    supports_credentials=True,
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Company-Id",
+        "X-Empresa-Id",
+    ],
+    expose_headers=["X-Tenant-Id", "X-Company-Id"],
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    max_age=86400,
+)
+
+
+def _tenant_id_from_request() -> str | None:
+    """Lê o identificador da empresa/tenant enviado pelo frontend.
+
+    Padrão recomendado para o front real:
+      X-Tenant-Id: <id-da-empresa-ou-tenant>
+
+    Também aceitamos X-Company-Id, X-Empresa-Id e query params para facilitar testes no Swagger/Postman.
+    """
+    return (
+        request.headers.get("X-Tenant-Id")
+        or request.headers.get("X-Company-Id")
+        or request.headers.get("X-Empresa-Id")
+        or request.args.get("tenant_id")
+        or request.args.get("company_id")
+        or request.args.get("empresa_id")
+        or None
+    )
+
+
+def _effective_project_key() -> str | None:
+    """Compatibilidade com a base atual.
+
+    Hoje a API já filtra por project_key. Enquanto não houver uma coluna formal tenant_id/company_id,
+    o id da empresa enviado por header será aplicado como project_key quando project_key não vier na query.
+    """
+    return request.args.get("project_key") or _tenant_id_from_request() or None
 
 
 OPENAPI_DESCRIPTION = """
@@ -39,6 +100,8 @@ A API foi organizada para responder perguntas de gestão como:
 6. `POST /api/finops/pricing` — atualiza tabela de preço por modelo.
 
 ## Observação sobre área de negócio
+
+O header `X-Tenant-Id` é o padrão recomendado para informar a empresa/tenant que está consultando o FinOps. Também são aceitos `X-Company-Id`, `X-Empresa-Id` e os query params `tenant_id`, `company_id` e `empresa_id`. Enquanto a base não tiver uma coluna formal de tenant, esse valor é aplicado como `project_key` por compatibilidade.
 
 O filtro `business_area` é suportado pela API. Caso o banco ainda não possua uma coluna explícita de área, a API continua funcionando e utiliza os dados disponíveis, sem obrigar criação imediata de tabela nova.
 """
@@ -85,6 +148,7 @@ def _openapi_spec() -> dict:
                     "summary": "Dataset consolidado do dashboard FinOps",
                     "description": "Retorna KPIs, séries, tabelas, recomendações, showback e filtros aplicados para alimentar o dashboard principal.",
                     "parameters": [
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30, "enum": [7, 15, 30, 60, 90]}, "description": "Janela de análise em dias."},
                         {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio filtrada. Também aceita alias `area`."},
                         {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto ou tenant lógico do Gabbi."},
@@ -98,7 +162,10 @@ def _openapi_spec() -> dict:
                     "tags": ["03. Filtros"],
                     "summary": "Opções de filtros para o frontend",
                     "description": "Retorna períodos disponíveis, áreas de negócio, projetos e agentes para montar os filtros do dashboard.",
-                    "parameters": [{"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de referência para procurar opções."}],
+                    "parameters": [
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
+                        {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de referência para procurar opções."}
+                    ],
                     "responses": {"200": {"description": "Filtros disponíveis", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FinOpsFilters"}}}}},
                 }
             },
@@ -108,6 +175,7 @@ def _openapi_spec() -> dict:
                     "summary": "Custo por agente",
                     "description": "Retorna ranking de agentes com custo total e percentual de representatividade sobre o custo do período.",
                     "parameters": [
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."},
                         {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio."},
                         {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto."},
@@ -123,6 +191,7 @@ def _openapi_spec() -> dict:
                     "summary": "Dados da dobra principal do FinOps",
                     "description": "Retorna os blocos executivos da seção 'O que mostrar na dobra principal do FinOps'.",
                     "parameters": [
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."},
                         {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio."},
                         {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto."},
@@ -151,6 +220,20 @@ def _openapi_spec() -> dict:
             },
         },
         "components": {
+            "securitySchemes": {
+                "TenantHeader": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-Tenant-Id",
+                    "description": "Identificador da empresa/tenant. Exemplo: spread"
+                },
+                "CompanyHeader": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-Company-Id",
+                    "description": "Alias aceito para o identificador da empresa."
+                }
+            },
             "schemas": {
                 "FinOpsDataset": {
                     "type": "object",
@@ -566,35 +649,51 @@ def api_finops_pricing():
 @app.route("/api/finops/dataset", methods=["GET"])
 def api_finops_dataset():
     days = int(request.args.get("days", "30"))
-    project_key = request.args.get("project_key") or None
+    project_key = _effective_project_key()
+    tenant_id = _tenant_id_from_request()
     agent_name = request.args.get("agent_name") or None
     business_area = request.args.get("business_area") or request.args.get("area") or None
-    return jsonify(summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)), 200
+    data = summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)
+    data.setdefault("filters", {})["tenant_id"] = tenant_id
+    data.setdefault("filters", {})["company_id"] = tenant_id
+    return jsonify(data), 200
 
 
 @app.route("/api/finops/filters", methods=["GET"])
 def api_finops_filters():
     days = int(request.args.get("days", "30"))
-    return jsonify(get_finops_filter_options(days=days)), 200
+    tenant_id = _tenant_id_from_request()
+    data = get_finops_filter_options(days=days)
+    data["tenant_id"] = tenant_id
+    data["company_id"] = tenant_id
+    return jsonify(data), 200
 
 
 @app.route("/api/finops/agents/cost", methods=["GET"])
 def api_finops_agents_cost():
     days = int(request.args.get("days", "30"))
     limit = int(request.args.get("limit", "20"))
-    project_key = request.args.get("project_key") or None
+    project_key = _effective_project_key()
+    tenant_id = _tenant_id_from_request()
     agent_name = request.args.get("agent_name") or None
     business_area = request.args.get("business_area") or request.args.get("area") or None
-    return jsonify(get_cost_by_agent(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area, limit=limit)), 200
+    data = get_cost_by_agent(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area, limit=limit)
+    data.setdefault("filters", {})["tenant_id"] = tenant_id
+    data.setdefault("filters", {})["company_id"] = tenant_id
+    return jsonify(data), 200
 
 
 @app.route("/api/finops/hero-fold", methods=["GET"])
 def api_finops_hero_fold():
     days = int(request.args.get("days", "30"))
-    project_key = request.args.get("project_key") or None
+    project_key = _effective_project_key()
+    tenant_id = _tenant_id_from_request()
     agent_name = request.args.get("agent_name") or None
     business_area = request.args.get("business_area") or request.args.get("area") or None
-    return jsonify(get_hero_fold(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)), 200
+    data = get_hero_fold(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)
+    data.setdefault("filters", {})["tenant_id"] = tenant_id
+    data.setdefault("filters", {})["company_id"] = tenant_id
+    return jsonify(data), 200
 
 
 if __name__ == "__main__":
