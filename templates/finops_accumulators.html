@@ -40,7 +40,6 @@
         </table>
       </div>
       <div class="hint">
-        <b>Dica para demo:</b> selecione "Fake • Live" no Dashboard e clique em "Simular 1 hora" para ver o fechamento do mínimo acontecer.
       </div>
     </div>
   </div>
@@ -64,7 +63,7 @@
             <tr>
               <td>{{ p.model }}</td>
               <td>{{ p.min_tokens }}</td>
-              <td><b>R$ {{ "%.2f"|format(p.min_cost) }}</b></td>
+<td><b>R$ {{ "%.2f"|format(p.min_cost_brl or 0) }}</b></td>
             </tr>
             {% endfor %}
           </tbody>

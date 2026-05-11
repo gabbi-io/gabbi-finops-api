@@ -21,7 +21,7 @@
             <tr>
               <td>{{ p.model }}</td>
               <td>{{ p.min_tokens }}</td>
-              <td><b>R$ {{ "%.2f"|format(p.min_cost) }}</b></td>
+              <td><b>R$ {{ "%.2f"|format(p.min_cost_brl or 0) }}</b></td>
             </tr>
             {% endfor %}
           </tbody>
