@@ -26,7 +26,36 @@ _allowed_origins = [
     origin.strip()
     for origin in os.getenv(
         "FINOPS_CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173,http://192.168.230.107:5173"
+        ",".join([
+            # Local
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+
+            # FinOps API server
+            "http://192.168.230.107:5173",
+            "http://192.168.230.107:8098",
+
+            # Dev server
+            "http://192.168.230.99",
+            "http://192.168.230.99:5173",
+            "http://192.168.230.99:8098",
+            "https://192.168.230.99",
+            "https://192.168.230.99:5173",
+            "https://192.168.230.99:8098",
+
+            # Prod server / banco atual
+            "http://192.168.230.108",
+            "http://192.168.230.108:5173",
+            "http://192.168.230.108:8098",
+            "https://192.168.230.108",
+            "https://192.168.230.108:5173",
+            "https://192.168.230.108:8098",
+
+            # Domínios Gabbi
+            "https://dev.gabbi.io",
+            "https://gabbi.io",
+            "https://www.gabbi.io"
+        ])
     ).split(",")
     if origin.strip()
 ]
@@ -38,34 +67,38 @@ CORS(
     allow_headers=[
         "Content-Type",
         "Authorization",
+        "clientKey",
+        "ClientKey",
+        "X-Client-Key",
         "X-Tenant-Id",
         "X-Company-Id",
         "X-Empresa-Id",
     ],
-    expose_headers=["X-Tenant-Id", "X-Company-Id"],
+    expose_headers=[
+        "clientKey",
+        "X-Client-Key",
+        "X-Tenant-Id",
+        "X-Company-Id",
+    ],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     max_age=86400,
 )
 
-
 def _tenant_id_from_request() -> str | None:
-    """Lê o identificador da empresa/tenant enviado pelo frontend.
-
-    Padrão recomendado para o front real:
-      X-Tenant-Id: <id-da-empresa-ou-tenant>
-
-    Também aceitamos X-Company-Id, X-Empresa-Id e query params para facilitar testes no Swagger/Postman.
-    """
     return (
-        request.headers.get("X-Tenant-Id")
+        request.headers.get("clientKey")
+        or request.headers.get("ClientKey")
+        or request.headers.get("X-Client-Key")
+        or request.headers.get("X-Tenant-Id")
         or request.headers.get("X-Company-Id")
         or request.headers.get("X-Empresa-Id")
+        or request.args.get("clientKey")
+        or request.args.get("client_key")
         or request.args.get("tenant_id")
         or request.args.get("company_id")
         or request.args.get("empresa_id")
         or None
     )
-
 
 def _effective_project_key() -> str | None:
     """Compatibilidade com a base atual.
