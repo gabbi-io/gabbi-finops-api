@@ -10,6 +10,7 @@ from flask import session, redirect, url_for, render_template, request, flash
 from functools import wraps
 import simulator as sim
 from real_provider import summarize_real, upsert_pricing, ingest_usage, get_finops_filter_options, get_cost_by_agent, get_hero_fold
+from db import fetch_one, fetch_all
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -100,13 +101,133 @@ def _tenant_id_from_request() -> str | None:
         or None
     )
 
-def _effective_project_key() -> str | None:
-    """Compatibilidade com a base atual.
+def _resolve_customer_projects_from_request() -> dict:
+    """Resolve o escopo FinOps a partir do padrão Gabbi.
 
-    Hoje a API já filtra por project_key. Enquanto não houver uma coluna formal tenant_id/company_id,
-    o id da empresa enviado por header será aplicado como project_key quando project_key não vier na query.
+    Padrão do front:
+      headers: { clientKey: customerId }
+
+    Fluxo correto:
+      1. Recebe clientKey contendo public."Customer".id
+      2. Valida o Customer ativo
+      3. Busca todos os projetos ativos do cliente em public."Project"
+      4. Usa Project.id[] como filtro em finops.<tabela>.project_key
+
+    Compatibilidade:
+      - Se project_key vier explicitamente na query, filtra só esse projeto.
+      - Se não vier clientKey nem project_key, mantém visão geral sem filtro.
+      - Se clientKey vier inválido ou cliente não tiver projetos, retorna project_keys=[] para não vazar dados.
     """
-    return request.args.get("project_key") or _tenant_id_from_request() or None
+    explicit_project_key = request.args.get("project_key")
+    if explicit_project_key:
+        return {
+            "clientKey": _tenant_id_from_request(),
+            "customer_id": None,
+            "customer_key": None,
+            "customer_name": None,
+            "project_key": explicit_project_key,
+            "project_keys": [explicit_project_key],
+            "projects": [{"id": explicit_project_key, "name": None}],
+            "scope_mode": "explicit_project_key",
+        }
+
+    client_key = _tenant_id_from_request()
+    if not client_key:
+        return {
+            "clientKey": None,
+            "customer_id": None,
+            "customer_key": None,
+            "customer_name": None,
+            "project_key": None,
+            "project_keys": None,
+            "projects": [],
+            "scope_mode": "all",
+        }
+
+    try:
+        customer = fetch_one(
+            """
+            select id, name, key
+            from public."Customer"
+            where id = %(customer_id)s
+              and deleted = false
+            limit 1
+            """,
+            {"customer_id": client_key},
+        )
+
+        if not customer:
+            return {
+                "clientKey": client_key,
+                "customer_id": None,
+                "customer_key": None,
+                "customer_name": None,
+                "project_key": None,
+                "project_keys": [],
+                "projects": [],
+                "scope_mode": "customer_not_found",
+            }
+
+        projects = fetch_all(
+            """
+            select id, name
+            from public."Project"
+            where "customerId" = %(customer_id)s
+              and deleted = false
+            order by name asc nulls last, id asc
+            """,
+            {"customer_id": customer["id"]},
+        )
+
+        project_ids = [str(p["id"]) for p in projects if p.get("id")]
+
+        return {
+            "clientKey": client_key,
+            "customer_id": customer.get("id"),
+            "customer_key": customer.get("key"),
+            "customer_name": customer.get("name"),
+            "project_key": None,
+            "project_keys": project_ids,
+            "projects": [{"id": p.get("id"), "name": p.get("name")} for p in projects],
+            "scope_mode": "customer_projects",
+        }
+
+    except Exception as e:
+        print(f"[FINOPS][WARN] erro ao resolver projetos do Customer pelo clientKey: {e}")
+        return {
+            "clientKey": client_key,
+            "customer_id": None,
+            "customer_key": None,
+            "customer_name": None,
+            "project_key": None,
+            "project_keys": [],
+            "projects": [],
+            "scope_mode": "customer_resolution_error",
+        }
+
+
+def _effective_project_key() -> str | None:
+    """Mantido para compatibilidade com chamadas antigas."""
+    return _resolve_customer_projects_from_request().get("project_key")
+
+
+def _effective_project_keys() -> list[str] | None:
+    return _resolve_customer_projects_from_request().get("project_keys")
+
+
+def _customer_context_from_request() -> dict:
+    """Retorna metadados do Customer e projetos para auditoria/depuração no retorno da API."""
+    ctx = _resolve_customer_projects_from_request()
+    return {
+        "clientKey": ctx.get("clientKey"),
+        "customer_id": ctx.get("customer_id"),
+        "customer_key": ctx.get("customer_key"),
+        "customer_name": ctx.get("customer_name"),
+        "scope_mode": ctx.get("scope_mode"),
+        "project_count": len(ctx.get("project_keys") or []),
+        "project_keys": ctx.get("project_keys"),
+        "projects": ctx.get("projects") or [],
+    }
 
 
 OPENAPI_DESCRIPTION = """
@@ -134,7 +255,7 @@ A API foi organizada para responder perguntas de gestão como:
 
 ## Observação sobre área de negócio
 
-O header `X-Tenant-Id` é o padrão recomendado para informar a empresa/tenant que está consultando o FinOps. Também são aceitos `X-Company-Id`, `X-Empresa-Id` e os query params `tenant_id`, `company_id` e `empresa_id`. Enquanto a base não tiver uma coluna formal de tenant, esse valor é aplicado como `project_key` por compatibilidade.
+O header `clientKey` é o padrão recomendado para informar a empresa/cliente que está consultando o FinOps. O valor esperado é o `id` da tabela `public."Customer"`. A API valida esse `id`, busca os projetos ativos vinculados em `public."Project"` e usa a lista de `Project.id` como filtro em `finops.<tabela>.project_key`. Também são aceitos, por compatibilidade, `X-Tenant-Id`, `X-Company-Id`, `X-Empresa-Id` e query params de apoio.
 
 O filtro `business_area` é suportado pela API. Caso o banco ainda não possua uma coluna explícita de área, a API continua funcionando e utiliza os dados disponíveis, sem obrigar criação imediata de tabela nova.
 """
@@ -181,7 +302,8 @@ def _openapi_spec() -> dict:
                     "summary": "Dataset consolidado do dashboard FinOps",
                     "description": "Retorna KPIs, séries, tabelas, recomendações, showback e filtros aplicados para alimentar o dashboard principal.",
                     "parameters": [
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
+                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30, "enum": [7, 15, 30, 60, 90]}, "description": "Janela de análise em dias."},
                         {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio filtrada. Também aceita alias `area`."},
                         {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto ou tenant lógico do Gabbi."},
@@ -196,7 +318,8 @@ def _openapi_spec() -> dict:
                     "summary": "Opções de filtros para o frontend",
                     "description": "Retorna períodos disponíveis, áreas de negócio, projetos e agentes para montar os filtros do dashboard.",
                     "parameters": [
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
+                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de referência para procurar opções."}
                     ],
                     "responses": {"200": {"description": "Filtros disponíveis", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FinOpsFilters"}}}}},
@@ -208,7 +331,8 @@ def _openapi_spec() -> dict:
                     "summary": "Custo por agente",
                     "description": "Retorna ranking de agentes com custo total e percentual de representatividade sobre o custo do período.",
                     "parameters": [
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
+                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."},
                         {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio."},
                         {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto."},
@@ -224,7 +348,8 @@ def _openapi_spec() -> dict:
                     "summary": "Dados da dobra principal do FinOps",
                     "description": "Retorna os blocos executivos da seção 'O que mostrar na dobra principal do FinOps'.",
                     "parameters": [
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Identificador da empresa/tenant. Exemplo: spread."},
+                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
+                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
                         {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."},
                         {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio."},
                         {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto."},
@@ -254,11 +379,17 @@ def _openapi_spec() -> dict:
         },
         "components": {
             "securitySchemes": {
+                "ClientKeyHeader": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "clientKey",
+                    "description": "ID do cliente na tabela public.Customer. A API resolve Customer.key e filtra project_key."
+                },
                 "TenantHeader": {
                     "type": "apiKey",
                     "in": "header",
                     "name": "X-Tenant-Id",
-                    "description": "Identificador da empresa/tenant. Exemplo: spread"
+                    "description": "Compatibilidade legada para identificador da empresa/tenant."
                 },
                 "CompanyHeader": {
                     "type": "apiKey",
@@ -682,13 +813,16 @@ def api_finops_pricing():
 @app.route("/api/finops/dataset", methods=["GET"])
 def api_finops_dataset():
     days = int(request.args.get("days", "30"))
-    project_key = _effective_project_key()
+    scope = _resolve_customer_projects_from_request()
+    project_key = scope.get("project_key")
+    project_keys = scope.get("project_keys")
     tenant_id = _tenant_id_from_request()
     agent_name = request.args.get("agent_name") or None
     business_area = request.args.get("business_area") or request.args.get("area") or None
-    data = summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)
+    data = summarize_real(days=days, project_key=project_key, project_keys=project_keys, agent_name=agent_name, business_area=business_area)
     data.setdefault("filters", {})["tenant_id"] = tenant_id
     data.setdefault("filters", {})["company_id"] = tenant_id
+    data.setdefault("filters", {})["customer"] = _customer_context_from_request()
     return jsonify(data), 200
 
 
@@ -696,9 +830,12 @@ def api_finops_dataset():
 def api_finops_filters():
     days = int(request.args.get("days", "30"))
     tenant_id = _tenant_id_from_request()
-    data = get_finops_filter_options(days=days)
+    scope = _resolve_customer_projects_from_request()
+    project_keys = scope.get("project_keys")
+    data = get_finops_filter_options(days=days, project_keys=project_keys)
     data["tenant_id"] = tenant_id
     data["company_id"] = tenant_id
+    data["customer"] = _customer_context_from_request()
     return jsonify(data), 200
 
 
@@ -706,26 +843,32 @@ def api_finops_filters():
 def api_finops_agents_cost():
     days = int(request.args.get("days", "30"))
     limit = int(request.args.get("limit", "20"))
-    project_key = _effective_project_key()
+    scope = _resolve_customer_projects_from_request()
+    project_key = scope.get("project_key")
+    project_keys = scope.get("project_keys")
     tenant_id = _tenant_id_from_request()
     agent_name = request.args.get("agent_name") or None
     business_area = request.args.get("business_area") or request.args.get("area") or None
-    data = get_cost_by_agent(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area, limit=limit)
+    data = get_cost_by_agent(days=days, project_key=project_key, project_keys=project_keys, agent_name=agent_name, business_area=business_area, limit=limit)
     data.setdefault("filters", {})["tenant_id"] = tenant_id
     data.setdefault("filters", {})["company_id"] = tenant_id
+    data.setdefault("filters", {})["customer"] = _customer_context_from_request()
     return jsonify(data), 200
 
 
 @app.route("/api/finops/hero-fold", methods=["GET"])
 def api_finops_hero_fold():
     days = int(request.args.get("days", "30"))
-    project_key = _effective_project_key()
+    scope = _resolve_customer_projects_from_request()
+    project_key = scope.get("project_key")
+    project_keys = scope.get("project_keys")
     tenant_id = _tenant_id_from_request()
     agent_name = request.args.get("agent_name") or None
     business_area = request.args.get("business_area") or request.args.get("area") or None
-    data = get_hero_fold(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)
+    data = get_hero_fold(days=days, project_key=project_key, project_keys=project_keys, agent_name=agent_name, business_area=business_area)
     data.setdefault("filters", {})["tenant_id"] = tenant_id
     data.setdefault("filters", {})["company_id"] = tenant_id
+    data.setdefault("filters", {})["customer"] = _customer_context_from_request()
     return jsonify(data), 200
 
 

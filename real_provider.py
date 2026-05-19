@@ -95,10 +95,21 @@ def _build_filter_clauses(
     agent_name: str | None,
     alias: str,
     business_area: str | None = None,
+    project_keys: list[str] | None = None,
 ) -> list[str]:
     clauses: list[str] = []
-    if project_key:
+
+    # Filtro multiempresa correto:
+    # clientKey -> Customer.id -> Project.id[] -> finops.<table>.project_key IN Project.id[]
+    # Quando project_keys=[] significa cliente válido sem projetos ou cliente inválido: deve retornar vazio.
+    if project_keys is not None:
+        if len(project_keys) == 0:
+            clauses.append("1=0")
+        else:
+            clauses.append(f"{alias}.project_key = ANY(%(project_keys)s)")
+    elif project_key:
         clauses.append(f"{alias}.project_key = %(project_key)s")
+
     if agent_name:
         clauses.append(f"{alias}.agent_name = %(agent_name)s")
     if business_area:
@@ -106,7 +117,6 @@ def _build_filter_clauses(
         if expr != "NULL":
             clauses.append(f"{expr} = %(business_area)s")
     return clauses
-
 
 def _compose_where(clauses: list[str]) -> str:
     active = [c for c in clauses if c]
@@ -119,6 +129,7 @@ def _compute_budget_metrics(
     project_key: str | None,
     agent_name: str | None,
     business_area: str | None = None,
+    project_keys: list[str] | None = None,
 ) -> dict:
     now = datetime.now(timezone.utc)
     month_start, month_end = _month_bounds(now)
@@ -126,6 +137,8 @@ def _compute_budget_metrics(
     params: dict[str, Any] = {"start": month_start, "end": month_end}
     if project_key:
         params["project_key"] = project_key
+    if project_keys is not None:
+        params["project_keys"] = project_keys
     if agent_name:
         params["agent_name"] = agent_name
     if business_area:
@@ -135,7 +148,7 @@ def _compute_budget_metrics(
 
     if ledger_on:
         where_l = _compose_where(
-            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area)
+            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area, project_keys)
         )
         row = fetch_one(
             f"""
@@ -148,7 +161,7 @@ def _compute_budget_metrics(
         month_cost = _safe_float(row["total_cost"])
     elif pricing_on:
         where_u = _compose_where(
-            ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area)
+            ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area, project_keys)
         )
         row = fetch_one(
             f"""
@@ -204,6 +217,7 @@ def _compute_recommendations(
     start: datetime,
     end: datetime,
     business_area: str | None = None,
+    project_keys: list[str] | None = None,
 ) -> list[dict]:
     if not pricing_on:
         return []
@@ -211,13 +225,15 @@ def _compute_recommendations(
     params: dict[str, Any] = {"start": start, "end": end}
     if project_key:
         params["project_key"] = project_key
+    if project_keys is not None:
+        params["project_keys"] = project_keys
     if agent_name:
         params["agent_name"] = agent_name
     if business_area:
         params["business_area"] = business_area
 
     where_u = _compose_where(
-        ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area)
+        ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area, project_keys)
     )
 
     rows = fetch_all(
@@ -284,10 +300,13 @@ def _compute_showback(
     start: datetime,
     end: datetime,
     business_area: str | None = None,
+    project_keys: list[str] | None = None,
 ) -> dict:
     params: dict[str, Any] = {"start": start, "end": end}
     if project_key:
         params["project_key"] = project_key
+    if project_keys is not None:
+        params["project_keys"] = project_keys
     if agent_name:
         params["agent_name"] = agent_name
     if business_area:
@@ -299,7 +318,7 @@ def _compute_showback(
 
     if ledger_on:
         where_l = _compose_where(
-            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area)
+            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area, project_keys)
         )
         project_rows = fetch_all(
             f"""
@@ -338,7 +357,7 @@ def _compute_showback(
         )
     elif pricing_on:
         where_u = _compose_where(
-            ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area)
+            ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area, project_keys)
         )
         project_rows = fetch_all(
             f"""
@@ -403,12 +422,15 @@ def summarize_real(
     project_key: str | None = None,
     agent_name: str | None = None,
     business_area: str | None = None,
+    project_keys: list[str] | None = None,
 ) -> dict:
     start, end = _parse_days(days)
 
     params: dict[str, Any] = {"start": start, "end": end}
     if project_key:
         params["project_key"] = project_key
+    if project_keys is not None:
+        params["project_keys"] = project_keys
     if agent_name:
         params["agent_name"] = agent_name
     if business_area:
@@ -419,7 +441,7 @@ def summarize_real(
     acc_on = _has_accumulators()
 
     where_u = _compose_where(
-        ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area)
+        ["u.created_at >= %(start)s", "u.created_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "u", business_area, project_keys)
     )
 
     kpi_usage = fetch_one(
@@ -442,7 +464,7 @@ def summarize_real(
 
     if ledger_on:
         where_l = _compose_where(
-            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area)
+            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area, project_keys)
         )
         kpi_ledger = fetch_one(
             f"""
@@ -490,7 +512,8 @@ def summarize_real(
                  and (p.valid_to is null or u.created_at < p.valid_to)
                 where {where_u}
                 group by 1
-                """
+                """,
+                params,
             )
             for r in by_source:
                 if r["source_type"] == "MANUAL":
@@ -508,10 +531,10 @@ def summarize_real(
     net_value_brl = estimated_savings_brl - total_cost_brl
     roi_percent = ((net_value_brl / total_cost_brl) * 100.0) if total_cost_brl > 0 else 0.0
 
-    budget_metrics = _compute_budget_metrics(pricing_on, ledger_on, project_key, agent_name, business_area)
-    recommendations = _compute_recommendations(pricing_on, project_key, agent_name, start, end, business_area)
+    budget_metrics = _compute_budget_metrics(pricing_on, ledger_on, project_key, agent_name, business_area, project_keys)
+    recommendations = _compute_recommendations(pricing_on, project_key, agent_name, start, end, business_area, project_keys)
     top_recommendation = recommendations[0] if recommendations else None
-    showback = _compute_showback(pricing_on, ledger_on, project_key, agent_name, start, end, business_area)
+    showback = _compute_showback(pricing_on, ledger_on, project_key, agent_name, start, end, business_area, project_keys)
 
     series_cost_by_day = []
     series_cost_by_source = []
@@ -519,7 +542,7 @@ def summarize_real(
 
     if ledger_on:
         where_l = _compose_where(
-            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area)
+            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area, project_keys)
         )
         series_cost_by_day = fetch_all(
             f"""
@@ -608,7 +631,7 @@ def summarize_real(
     top_flows = []
     if ledger_on:
         where_l_auto = _compose_where(
-            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s", "l.source_type='AUTOMATION'"] + _build_filter_clauses(project_key, agent_name, "l", business_area)
+            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s", "l.source_type='AUTOMATION'"] + _build_filter_clauses(project_key, agent_name, "l", business_area, project_keys)
         )
         top_tasks = fetch_all(
             f"""
@@ -657,7 +680,7 @@ def summarize_real(
     ledger_rows = []
     if ledger_on:
         where_l = _compose_where(
-            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area)
+            ["l.occurred_at >= %(start)s", "l.occurred_at < %(end)s"] + _build_filter_clauses(project_key, agent_name, "l", business_area, project_keys)
         )
         ledger_rows = fetch_all(
             f"""
@@ -758,6 +781,7 @@ def summarize_real(
         "filters": {
             "days": int(days),
             "project_key": project_key,
+            "project_keys": project_keys,
             "agent_name": agent_name,
             "business_area": business_area,
             "pricing_enabled": bool(pricing_on),
@@ -787,10 +811,16 @@ def summarize_real(
     return dataset
 
 
-def get_finops_filter_options(days: int = 30) -> dict:
+def get_finops_filter_options(days: int = 30, project_keys: list[str] | None = None) -> dict:
     """Options for the real React/Node frontend filters."""
     start, end = _parse_days(days)
     params = {"start": start, "end": end}
+    if project_keys is not None:
+        params["project_keys"] = project_keys
+    project_filter_sql = ""
+    if project_keys is not None:
+        project_filter_sql = " and u.project_key = ANY(%(project_keys)s)" if project_keys else " and 1=0"
+
     options = {"periods": [7, 15, 30, 60, 90], "business_areas": [], "project_keys": [], "agents": []}
 
     if table_exists("finops", "interaction_usage"):
@@ -801,6 +831,7 @@ def get_finops_filter_options(days: int = 30) -> dict:
                 select distinct {area_expr_u} as value
                 from finops.interaction_usage u
                 where u.created_at >= %(start)s and u.created_at < %(end)s
+                  {project_filter_sql}
                   and {area_expr_u} is not null and trim({area_expr_u}::text) <> ''
                 order by 1
                 """,
@@ -808,10 +839,11 @@ def get_finops_filter_options(days: int = 30) -> dict:
             )
         if _column_exists("finops", "interaction_usage", "project_key"):
             options["project_keys"] = fetch_all(
-                """
+                f"""
                 select distinct u.project_key as value
                 from finops.interaction_usage u
                 where u.created_at >= %(start)s and u.created_at < %(end)s
+                  {project_filter_sql}
                   and u.project_key is not null and trim(u.project_key::text) <> ''
                 order by 1
                 """,
@@ -819,10 +851,11 @@ def get_finops_filter_options(days: int = 30) -> dict:
             )
         if _column_exists("finops", "interaction_usage", "agent_name"):
             options["agents"] = fetch_all(
-                """
+                f"""
                 select distinct u.agent_name as value
                 from finops.interaction_usage u
                 where u.created_at >= %(start)s and u.created_at < %(end)s
+                  {project_filter_sql}
                   and u.agent_name is not null and trim(u.agent_name::text) <> ''
                 order by 1
                 """,
@@ -849,8 +882,8 @@ def _agent_rows_from_showback(dataset: dict, limit: int | None = None) -> list[d
     return rows[:limit] if limit else rows
 
 
-def get_cost_by_agent(days: int = 30, project_key: str | None = None, agent_name: str | None = None, business_area: str | None = None, limit: int = 20) -> dict:
-    dataset = summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)
+def get_cost_by_agent(days: int = 30, project_key: str | None = None, agent_name: str | None = None, business_area: str | None = None, limit: int = 20, project_keys: list[str] | None = None) -> dict:
+    dataset = summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area, project_keys=project_keys)
     return {
         "filters": dataset.get("filters", {}),
         "total_cost_brl": dataset.get("kpis", {}).get("total_cost", 0),
@@ -858,8 +891,8 @@ def get_cost_by_agent(days: int = 30, project_key: str | None = None, agent_name
     }
 
 
-def get_hero_fold(days: int = 30, project_key: str | None = None, agent_name: str | None = None, business_area: str | None = None) -> dict:
-    dataset = summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area)
+def get_hero_fold(days: int = 30, project_key: str | None = None, agent_name: str | None = None, business_area: str | None = None, project_keys: list[str] | None = None) -> dict:
+    dataset = summarize_real(days=days, project_key=project_key, agent_name=agent_name, business_area=business_area, project_keys=project_keys)
     kpis = dataset.get("kpis", {})
     agents = _agent_rows_from_showback(dataset, limit=999)
     top3_cost = sum(_safe_float(a.get("total_cost_brl")) for a in agents[:3])
