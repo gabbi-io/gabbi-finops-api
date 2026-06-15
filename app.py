@@ -10,6 +10,13 @@ from flask import session, redirect, url_for, render_template, request, flash
 from functools import wraps
 import simulator as sim
 from real_provider import summarize_real, upsert_pricing, ingest_usage, get_finops_filter_options, get_cost_by_agent, get_hero_fold
+from roi_provider import (
+    simulate_roi, list_roi_configurations, create_roi_configuration,
+    get_roi_configuration, update_roi_configuration, publish_roi_configuration,
+    archive_roi_configuration, list_roi_tasks, create_roi_task,
+    save_task_baseline, approve_task_baseline, list_roi_mappings,
+    create_roi_mapping, executive_dashboard, task_result,
+)
 from db import fetch_one, fetch_all
 
 app = Flask(__name__)
@@ -272,219 +279,108 @@ TAGS_METADATA = [
 
 
 def _openapi_spec() -> dict:
+    header_params = [
+        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. A API resolve os projetos do cliente e filtra por project_key IN (Project.id[])."},
+        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade legada para tenant/empresa."},
+    ]
+    period_params = header_params + [
+        {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."}
+    ]
+    finops_params = period_params + [
+        {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio. Também aceita alias area."},
+        {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Filtro explícito por projeto. Se informado, tem prioridade sobre clientKey."},
+        {"name": "agent_name", "in": "query", "schema": {"type": "string"}, "description": "Nome do agente."},
+    ]
+
+    def json_response(schema_ref: str, description: str = "Sucesso") -> dict:
+        return {"200": {"description": description, "content": {"application/json": {"schema": {"$ref": schema_ref}}}}}
+
     return {
         "openapi": "3.0.3",
         "info": {
-            "title": "Gabbi FinOps API",
-            "version": "2.1.0",
-            "description": OPENAPI_DESCRIPTION,
+            "title": "Gabbi FinOps + ROI API",
+            "version": "2.2.0",
+            "description": OPENAPI_DESCRIPTION + "\n\n## Módulo ROI\nInclui configuração de ROI, simulação, tarefas, baseline, mapeamentos e dashboard executivo.",
             "contact": {"name": "Gabbi / Spread", "url": "https://www.spread.com.br"},
             "license": {"name": "Proprietary / Internal Use"},
         },
-        "tags": TAGS_METADATA,
+        "tags": TAGS_METADATA + [
+            {"name": "07. ROI Configurações", "description": "CRUD, simulação, publicação e arquivamento de configurações de ROI."},
+            {"name": "08. ROI Tarefas", "description": "Cadastro de tarefas, baseline e resultados por tarefa."},
+            {"name": "09. ROI Mapeamentos", "description": "Associação tarefa x agente x workflow x DAG."},
+            {"name": "10. ROI Dashboard", "description": "Visão executiva de ROI consolidada por cliente/projetos."},
+        ],
         "servers": [
             {"url": "/", "description": "Servidor atual"},
             {"url": "http://localhost:5000", "description": "Flask local"},
-            {"url": "http://localhost:8000", "description": "Gunicorn local"},
+            {"url": "http://192.168.230.107:8098", "description": "Servidor FinOps atual"},
         ],
         "paths": {
-            "/health": {
-                "get": {
-                    "tags": ["01. Observabilidade"],
-                    "summary": "Health Check",
-                    "description": "Verifica se a API FinOps está ativa.",
-                    "responses": {"200": {"description": "Aplicação disponível"}},
-                }
+            "/health": {"get": {"tags": ["01. Observabilidade"], "summary": "Health Check", "description": "Verifica se a API está ativa.", "responses": {"200": {"description": "Aplicação disponível"}}}},
+
+            "/api/finops/dataset": {"get": {"tags": ["02. FinOps Dashboard"], "summary": "Dataset consolidado do dashboard FinOps", "description": "Retorna KPIs, séries, tabelas, recomendações, showback e filtros aplicados.", "parameters": finops_params, "responses": json_response("#/components/schemas/FinOpsDataset", "Dataset consolidado")}},
+            "/api/finops/filters": {"get": {"tags": ["03. Filtros"], "summary": "Opções de filtros para o frontend", "description": "Retorna períodos, áreas, projetos e agentes para montar filtros.", "parameters": period_params, "responses": json_response("#/components/schemas/FinOpsFilters", "Filtros disponíveis")}},
+            "/api/finops/agents/cost": {"get": {"tags": ["04. Agentes"], "summary": "Custo por agente", "description": "Ranking de agentes por custo total e percentual de participação.", "parameters": finops_params + [{"name": "limit", "in": "query", "schema": {"type": "integer", "default": 20}}], "responses": json_response("#/components/schemas/AgentCostResponse", "Ranking de custo por agente")}},
+            "/api/finops/hero-fold": {"get": {"tags": ["05. Dobra Principal"], "summary": "Dados da dobra principal do FinOps", "description": "Retorna os blocos executivos da visão FinOps.", "parameters": finops_params, "responses": json_response("#/components/schemas/HeroFoldResponse", "Dados da dobra principal")}},
+            "/api/finops/usage": {"post": {"tags": ["06. Ingestão"], "summary": "Registrar uso de IA", "description": "Registra tokens, modelo, agente, projeto, tarefa e workflow para cálculo FinOps.", "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageIngestRequest"}}}}, "responses": {"200": {"description": "Uso registrado"}, "400": {"description": "Payload inválido"}, "500": {"description": "Erro interno"}}}},
+            "/api/finops/pricing": {"post": {"tags": ["06. Ingestão"], "summary": "Atualizar precificação de modelo", "description": "Atualiza o custo por 1k tokens do modelo.", "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PricingRequest"}}}}, "responses": {"200": {"description": "Precificação salva"}, "400": {"description": "Payload inválido"}, "500": {"description": "Erro interno"}}}},
+
+            "/api/roi/configurations/simulate": {"post": {"tags": ["07. ROI Configurações"], "summary": "Simular ROI sem salvar", "description": "Usado pela lateral de simulação instantânea da tela de configuração. Calcula benefício bruto, custo, economia líquida, ROI e payback.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiSimulationRequest"}}}}, "responses": json_response("#/components/schemas/RoiSimulationResponse", "Simulação calculada")}},
+            "/api/roi/configurations": {
+                "get": {"tags": ["07. ROI Configurações"], "summary": "Listar configurações de ROI", "description": "Lista configurações no escopo do cliente informado via clientKey.", "parameters": header_params + [{"name": "status", "in": "query", "schema": {"type": "string", "enum": ["DRAFT", "PUBLISHED", "ARCHIVED"]}}], "responses": json_response("#/components/schemas/RoiConfigurationList", "Configurações listadas")},
+                "post": {"tags": ["07. ROI Configurações"], "summary": "Criar configuração de ROI", "description": "Cria uma configuração em rascunho e já calcula a simulação inicial.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiConfigurationRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Configuração criada")},
             },
-            "/api/finops/dataset": {
-                "get": {
-                    "tags": ["02. FinOps Dashboard"],
-                    "summary": "Dataset consolidado do dashboard FinOps",
-                    "description": "Retorna KPIs, séries, tabelas, recomendações, showback e filtros aplicados para alimentar o dashboard principal.",
-                    "parameters": [
-                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
-                        {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30, "enum": [7, 15, 30, 60, 90]}, "description": "Janela de análise em dias."},
-                        {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio filtrada. Também aceita alias `area`."},
-                        {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto ou tenant lógico do Gabbi."},
-                        {"name": "agent_name", "in": "query", "schema": {"type": "string"}, "description": "Nome do agente para análise específica."},
-                    ],
-                    "responses": {"200": {"description": "Dataset consolidado retornado com sucesso", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FinOpsDataset"}}}}},
-                }
+            "/api/roi/configurations/{id}": {
+                "get": {"tags": ["07. ROI Configurações"], "summary": "Detalhar configuração de ROI", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiConfiguration", "Configuração retornada")},
+                "patch": {"tags": ["07. ROI Configurações"], "summary": "Atualizar configuração em rascunho", "description": "Configurações publicadas são imutáveis; alterações devem gerar nova configuração/versão.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiConfigurationRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Configuração atualizada")},
             },
-            "/api/finops/filters": {
-                "get": {
-                    "tags": ["03. Filtros"],
-                    "summary": "Opções de filtros para o frontend",
-                    "description": "Retorna períodos disponíveis, áreas de negócio, projetos e agentes para montar os filtros do dashboard.",
-                    "parameters": [
-                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
-                        {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de referência para procurar opções."}
-                    ],
-                    "responses": {"200": {"description": "Filtros disponíveis", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FinOpsFilters"}}}}},
-                }
+            "/api/roi/configurations/{id}/simulate": {"post": {"tags": ["07. ROI Configurações"], "summary": "Simular configuração existente", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": False, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": json_response("#/components/schemas/RoiSimulationResponse", "Simulação calculada")}},
+            "/api/roi/configurations/{id}/publish": {"post": {"tags": ["07. ROI Configurações"], "summary": "Publicar configuração de ROI", "description": "Gera versão/snapshot imutável para uso oficial.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Configuração publicada")}},
+            "/api/roi/configurations/{id}/archive": {"post": {"tags": ["07. ROI Configurações"], "summary": "Arquivar configuração de ROI", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Configuração arquivada")}},
+
+            "/api/roi/tasks": {
+                "get": {"tags": ["08. ROI Tarefas"], "summary": "Listar tarefas de ROI", "description": "Lista tarefas de negócio medidas por ROI no escopo do cliente.", "parameters": header_params, "responses": json_response("#/components/schemas/RoiTaskList", "Tarefas listadas")},
+                "post": {"tags": ["08. ROI Tarefas"], "summary": "Criar tarefa de ROI", "description": "Cria tarefa de negócio com área, processo e owner.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiTaskRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Tarefa criada")},
             },
-            "/api/finops/agents/cost": {
-                "get": {
-                    "tags": ["04. Agentes"],
-                    "summary": "Custo por agente",
-                    "description": "Retorna ranking de agentes com custo total e percentual de representatividade sobre o custo do período.",
-                    "parameters": [
-                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
-                        {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."},
-                        {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio."},
-                        {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto."},
-                        {"name": "agent_name", "in": "query", "schema": {"type": "string"}, "description": "Agente específico."},
-                        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 20}, "description": "Quantidade máxima de agentes no ranking."},
-                    ],
-                    "responses": {"200": {"description": "Ranking de custo por agente", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AgentCostResponse"}}}}},
-                }
+            "/api/roi/tasks/{id}/baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Salvar baseline da tarefa", "description": "Registra tempo manual, volume mensal, custo/hora, SLA, erro e confiança.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiBaselineRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline salvo")}},
+            "/api/roi/tasks/{id}/approve-baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Aprovar baseline da tarefa", "description": "Marca o baseline mais recente como aprovado para cálculo oficial.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline aprovado")}},
+            "/api/roi/tasks/{id}/results": {"get": {"tags": ["08. ROI Tarefas"], "summary": "Resultado de ROI por tarefa", "description": "Retorna tarefa, baseline, mapeamentos e resultados históricos.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiTaskResult", "Resultado retornado")}},
+
+            "/api/roi/mappings": {
+                "get": {"tags": ["09. ROI Mapeamentos"], "summary": "Listar mapeamentos", "description": "Lista associações tarefa x agente x workflow x DAG.", "parameters": header_params, "responses": json_response("#/components/schemas/RoiMappingList", "Mapeamentos listados")},
+                "post": {"tags": ["09. ROI Mapeamentos"], "summary": "Criar mapeamento", "description": "Associa tarefa a agente, workflow n8n e/ou DAG Airflow, com cobertura e revisão humana.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiMappingRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Mapeamento criado")},
             },
-            "/api/finops/hero-fold": {
-                "get": {
-                    "tags": ["05. Dobra Principal"],
-                    "summary": "Dados da dobra principal do FinOps",
-                    "description": "Retorna os blocos executivos da seção 'O que mostrar na dobra principal do FinOps'.",
-                    "parameters": [
-                        {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. Exemplo: Customer.id."},
-                        {"name": "X-Tenant-Id", "in": "header", "schema": {"type": "string"}, "description": "Compatibilidade: identificador legado da empresa/tenant."},
-                        {"name": "days", "in": "query", "schema": {"type": "integer", "default": 30}, "description": "Janela de análise em dias."},
-                        {"name": "business_area", "in": "query", "schema": {"type": "string"}, "description": "Área de negócio."},
-                        {"name": "project_key", "in": "query", "schema": {"type": "string"}, "description": "Projeto."},
-                        {"name": "agent_name", "in": "query", "schema": {"type": "string"}, "description": "Agente específico."},
-                    ],
-                    "responses": {"200": {"description": "Dados da dobra principal", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HeroFoldResponse"}}}}},
-                }
-            },
-            "/api/finops/usage": {
-                "post": {
-                    "tags": ["06. Ingestão"],
-                    "summary": "Registrar uso de IA",
-                    "description": "Recebe dados de uso/tokenização de uma interação para alimentar custos, ROI, automações e showback.",
-                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageIngestRequest"}}}},
-                    "responses": {"200": {"description": "Uso registrado"}, "400": {"description": "Payload inválido"}, "500": {"description": "Erro interno"}},
-                }
-            },
-            "/api/finops/pricing": {
-                "post": {
-                    "tags": ["06. Ingestão"],
-                    "summary": "Atualizar precificação de modelo",
-                    "description": "Registra ou atualiza o custo por 1k tokens de um modelo.",
-                    "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PricingRequest"}}}},
-                    "responses": {"200": {"description": "Precificação salva"}, "400": {"description": "Payload inválido"}, "500": {"description": "Erro interno"}},
-                }
-            },
+            "/api/roi/dashboard/executive": {"get": {"tags": ["10. ROI Dashboard"], "summary": "Dashboard executivo de ROI", "description": "Retorna KPIs consolidados de ROI no escopo do cliente/projetos.", "parameters": period_params, "responses": json_response("#/components/schemas/RoiExecutiveDashboard", "Dashboard retornado")}},
         },
         "components": {
             "securitySchemes": {
-                "ClientKeyHeader": {
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": "clientKey",
-                    "description": "ID do cliente na tabela public.Customer. A API resolve Customer.key e filtra project_key."
-                },
-                "TenantHeader": {
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": "X-Tenant-Id",
-                    "description": "Compatibilidade legada para identificador da empresa/tenant."
-                },
-                "CompanyHeader": {
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": "X-Company-Id",
-                    "description": "Alias aceito para o identificador da empresa."
-                }
+                "ClientKeyHeader": {"type": "apiKey", "in": "header", "name": "clientKey", "description": "ID do cliente na tabela public.Customer."},
+                "TenantHeader": {"type": "apiKey", "in": "header", "name": "X-Tenant-Id", "description": "Compatibilidade legada."},
             },
             "schemas": {
-                "FinOpsDataset": {
-                    "type": "object",
-                    "properties": {
-                        "data_source": {"type": "string", "example": "real"},
-                        "days": {"type": "integer", "example": 30},
-                        "kpis": {"$ref": "#/components/schemas/FinOpsKpis"},
-                        "series": {"type": "object"},
-                        "tables": {"type": "object"},
-                        "recommendations": {"type": "array", "items": {"type": "object"}},
-                        "showback": {"type": "object"},
-                        "filters": {"type": "object"},
-                    },
-                },
-                "FinOpsKpis": {
-                    "type": "object",
-                    "properties": {
-                        "total_cost": {"type": "number", "example": 2009.60},
-                        "manual_cost": {"type": "number", "example": 1342.22},
-                        "automation_cost": {"type": "number", "example": 667.38},
-                        "interaction_rows": {"type": "integer", "example": 539},
-                        "estimated_savings_brl": {"type": "number", "example": 2425.50},
-                        "roi_percent": {"type": "number", "example": 20.70},
-                        "budget_used_percent": {"type": "number", "example": 80.6},
-                    },
-                },
-                "FinOpsFilters": {
-                    "type": "object",
-                    "properties": {
-                        "periods": {"type": "array", "items": {"type": "integer"}, "example": [7, 15, 30, 60, 90]},
-                        "business_areas": {"type": "array", "items": {"type": "string"}, "example": ["Todas as áreas", "Atendimento", "Financeiro"]},
-                        "project_keys": {"type": "array", "items": {"type": "string"}},
-                        "agents": {"type": "array", "items": {"type": "string"}},
-                    },
-                },
-                "AgentCostResponse": {
-                    "type": "object",
-                    "properties": {
-                        "total_cost": {"type": "number", "example": 2009.60},
-                        "agents": {"type": "array", "items": {"$ref": "#/components/schemas/AgentCostItem"}},
-                        "filters": {"type": "object"},
-                    },
-                },
-                "AgentCostItem": {
-                    "type": "object",
-                    "properties": {
-                        "agent_name": {"type": "string", "example": "Agente 007"},
-                        "total_cost": {"type": "number", "example": 667.38},
-                        "percentage": {"type": "number", "example": 33.2},
-                    },
-                },
-                "HeroFoldResponse": {
-                    "type": "object",
-                    "properties": {
-                        "cards": {"type": "array", "items": {"type": "object"}},
-                        "summary": {"type": "object"},
-                        "filters": {"type": "object"},
-                    },
-                },
-                "UsageIngestRequest": {
-                    "type": "object",
-                    "required": ["interaction_id", "session_id", "project_key", "agent_name", "model", "input_tokens", "output_tokens", "total_tokens"],
-                    "properties": {
-                        "interaction_id": {"type": "string", "example": "int-20260511-001"},
-                        "session_id": {"type": "string", "example": "sess-abc"},
-                        "project_key": {"type": "string", "example": "spread"},
-                        "agent_name": {"type": "string", "example": "Agente 007"},
-                        "model": {"type": "string", "example": "gpt-4o"},
-                        "input_tokens": {"type": "integer", "example": 1200},
-                        "output_tokens": {"type": "integer", "example": 400},
-                        "total_tokens": {"type": "integer", "example": 1600},
-                        "source_type": {"type": "string", "enum": ["MANUAL", "AUTOMATION"], "example": "AUTOMATION"},
-                        "task_id": {"type": "string", "example": "T-ANALISE-CONTRATO"},
-                        "flow_id": {"type": "string", "example": "F-N8N-RISCO"},
-                    },
-                },
-                "PricingRequest": {
-                    "type": "object",
-                    "required": ["model", "cost_per_1k_tokens_brl"],
-                    "properties": {
-                        "model": {"type": "string", "example": "gpt-4o"},
-                        "cost_per_1k_tokens_brl": {"type": "number", "example": 0.85},
-                        "min_tokens": {"type": "integer", "example": 800},
-                        "min_cost_brl": {"type": "number", "example": 0.80},
-                    },
-                },
-            }
+                "FinOpsDataset": {"type": "object", "properties": {"kpis": {"$ref": "#/components/schemas/FinOpsKpis"}, "series": {"type": "object"}, "tables": {"type": "object"}, "showback": {"type": "object"}, "filters": {"type": "object"}}},
+                "FinOpsKpis": {"type": "object", "properties": {"total_cost": {"type": "number", "example": 2009.60}, "manual_cost": {"type": "number"}, "automation_cost": {"type": "number"}, "interaction_rows": {"type": "integer"}, "estimated_savings_brl": {"type": "number"}, "roi_percent": {"type": "number"}}},
+                "FinOpsFilters": {"type": "object", "properties": {"periods": {"type": "array", "items": {"type": "integer"}}, "business_areas": {"type": "array", "items": {"type": "string"}}, "project_keys": {"type": "array", "items": {"type": "string"}}, "agents": {"type": "array", "items": {"type": "string"}}}},
+                "AgentCostResponse": {"type": "object", "properties": {"total_cost_brl": {"type": "number"}, "agents": {"type": "array", "items": {"$ref": "#/components/schemas/AgentCostItem"}}, "filters": {"type": "object"}}},
+                "AgentCostItem": {"type": "object", "properties": {"agent_name": {"type": "string"}, "total_cost_brl": {"type": "number"}, "cost_percent": {"type": "number"}}},
+                "HeroFoldResponse": {"type": "object", "properties": {"cards": {"type": "object"}, "agent_concentration": {"type": "array", "items": {"type": "object"}}, "filters": {"type": "object"}}},
+                "UsageIngestRequest": {"type": "object", "required": ["interaction_id", "session_id", "project_key", "agent_name", "model", "input_tokens", "output_tokens", "total_tokens"], "properties": {"interaction_id": {"type": "string"}, "session_id": {"type": "string"}, "project_key": {"type": "string"}, "agent_name": {"type": "string"}, "model": {"type": "string"}, "input_tokens": {"type": "integer"}, "output_tokens": {"type": "integer"}, "total_tokens": {"type": "integer"}, "source_type": {"type": "string", "enum": ["MANUAL", "AUTOMATION"]}, "task_id": {"type": "string"}, "flow_id": {"type": "string"}}},
+                "PricingRequest": {"type": "object", "required": ["model", "cost_per_1k_tokens_brl"], "properties": {"model": {"type": "string", "example": "gpt-4o"}, "cost_per_1k_tokens_brl": {"type": "number", "example": 0.85}, "min_tokens": {"type": "integer"}, "min_cost_brl": {"type": "number"}}},
+
+                "RoiSimulationRequest": {"type": "object", "properties": {"calculation_method": {"type": "string", "enum": ["business_result", "time_saved", "hybrid"], "example": "business_result"}, "value_event_name": {"type": "string", "example": "Contratação realizada"}, "event_unit_value_brl": {"type": "number", "example": 8500}, "expected_events_month": {"type": "integer", "example": 12}, "attribution_pct": {"type": "number", "example": 80}, "baseline_monthly_brl": {"type": "number", "example": 102000}, "agent_monthly_cost_brl": {"type": "number", "example": 4750}, "human_review_pct": {"type": "number", "example": 0}, "responsible_area": {"type": "string", "example": "RH"}}},
+                "RoiSimulationResponse": {"type": "object", "properties": {"gross_savings_brl": {"type": "number", "example": 81600}, "ai_cost_brl": {"type": "number", "example": 4750}, "net_savings_brl": {"type": "number", "example": 76850}, "roi_pct": {"type": "number", "example": 1617.89}, "payback_months": {"type": "number", "example": 0.06}, "payback_days": {"type": "number", "example": 2}, "chart": {"type": "object"}}},
+                "RoiConfigurationRequest": {"allOf": [{"$ref": "#/components/schemas/RoiSimulationRequest"}], "type": "object", "properties": {"project_id": {"type": "string", "description": "Project.id. Se omitido, usa o primeiro projeto do cliente."}, "task_id": {"type": "string"}, "agent_id": {"type": "string"}, "workflow_id": {"type": "string"}, "dag_id": {"type": "string"}, "name": {"type": "string", "example": "ROI Talent Finder"}, "description": {"type": "string"}, "require_evidence": {"type": "boolean", "example": True}, "human_review_required": {"type": "boolean", "example": False}, "assumptions_json": {"type": "object"}}},
+                "RoiConfiguration": {"type": "object", "additionalProperties": True},
+                "RoiConfigurationList": {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/RoiConfiguration"}}, "total": {"type": "integer"}}},
+                "RoiMutationResponse": {"type": "object", "properties": {"ok": {"type": "boolean", "example": True}, "item": {"type": "object"}, "error": {"type": "string"}, "version": {"type": "integer"}}},
+                "RoiTaskRequest": {"type": "object", "required": ["name"], "properties": {"project_id": {"type": "string"}, "code": {"type": "string", "example": "TALENT-FINDER"}, "name": {"type": "string", "example": "Triagem de candidatos"}, "description": {"type": "string"}, "area_id": {"type": "string"}, "process_name": {"type": "string", "example": "Recrutamento"}, "owner_id": {"type": "string"}, "status": {"type": "string", "example": "DRAFT"}}},
+                "RoiTaskList": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "object"}}, "total": {"type": "integer"}}},
+                "RoiBaselineRequest": {"type": "object", "properties": {"avg_manual_time_min": {"type": "number", "example": 45}, "monthly_volume": {"type": "integer", "example": 120}, "cost_per_hour_brl": {"type": "number", "example": 85}, "manual_sla_hours": {"type": "number"}, "manual_error_rate": {"type": "number"}, "baseline_date": {"type": "string", "format": "date"}, "confidence_level": {"type": "string", "example": "MEDIUM"}}},
+                "RoiTaskResult": {"type": "object", "properties": {"ok": {"type": "boolean"}, "task": {"type": "object"}, "baseline": {"type": "object"}, "mappings": {"type": "array", "items": {"type": "object"}}, "results": {"type": "array", "items": {"type": "object"}}}},
+                "RoiMappingRequest": {"type": "object", "required": ["task_id"], "properties": {"task_id": {"type": "string"}, "agent_id": {"type": "string"}, "agent_name": {"type": "string"}, "workflow_id": {"type": "string"}, "dag_id": {"type": "string"}, "coverage_pct": {"type": "number", "example": 80}, "human_review_pct": {"type": "number", "example": 0}, "execution_mode": {"type": "string", "example": "AUTOMATED"}, "channel": {"type": "string", "example": "WEB"}}},
+                "RoiMappingList": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "object"}}, "total": {"type": "integer"}}},
+                "RoiExecutiveDashboard": {"type": "object", "properties": {"kpis": {"type": "object"}, "days": {"type": "integer"}}},
+            },
         },
     }
 
@@ -869,6 +765,118 @@ def api_finops_hero_fold():
     data.setdefault("filters", {})["tenant_id"] = tenant_id
     data.setdefault("filters", {})["company_id"] = tenant_id
     data.setdefault("filters", {})["customer"] = _customer_context_from_request()
+    return jsonify(data), 200
+
+
+# ---------------- API ROI MVP ----------------
+
+def _current_user_id() -> str | None:
+    return session.get("user_id") or request.headers.get("X-User-Id") or request.headers.get("userId")
+
+
+@app.route("/api/roi/configurations", methods=["GET"])
+def api_roi_configurations_list():
+    status = request.args.get("status") or None
+    return jsonify(list_roi_configurations(project_keys=_effective_project_keys(), status=status)), 200
+
+
+@app.route("/api/roi/configurations", methods=["POST"])
+def api_roi_configurations_create():
+    payload = request.get_json(silent=True) or {}
+    out = create_roi_configuration(payload, _customer_context_from_request(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/configurations/<config_id>", methods=["GET"])
+def api_roi_configuration_get(config_id: str):
+    item = get_roi_configuration(config_id, project_keys=_effective_project_keys())
+    if not item:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    return jsonify({"ok": True, "item": item}), 200
+
+
+@app.route("/api/roi/configurations/<config_id>", methods=["PATCH"])
+def api_roi_configuration_patch(config_id: str):
+    payload = request.get_json(silent=True) or {}
+    out = update_roi_configuration(config_id, payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/configurations/simulate", methods=["POST"])
+def api_roi_configuration_simulate_new():
+    payload = request.get_json(silent=True) or {}
+    return jsonify({"ok": True, "simulation": simulate_roi(payload)}), 200
+
+
+@app.route("/api/roi/configurations/<config_id>/simulate", methods=["POST"])
+def api_roi_configuration_simulate_existing(config_id: str):
+    current = get_roi_configuration(config_id, project_keys=_effective_project_keys())
+    if not current:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    payload = {**current, **(request.get_json(silent=True) or {})}
+    return jsonify({"ok": True, "simulation": simulate_roi(payload)}), 200
+
+
+@app.route("/api/roi/configurations/<config_id>/publish", methods=["POST"])
+def api_roi_configuration_publish(config_id: str):
+    out = publish_roi_configuration(config_id, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/configurations/<config_id>/archive", methods=["POST"])
+def api_roi_configuration_archive(config_id: str):
+    out = archive_roi_configuration(config_id, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks", methods=["GET"])
+def api_roi_tasks_list():
+    return jsonify(list_roi_tasks(project_keys=_effective_project_keys())), 200
+
+
+@app.route("/api/roi/tasks", methods=["POST"])
+def api_roi_tasks_create():
+    payload = request.get_json(silent=True) or {}
+    out = create_roi_task(payload, _customer_context_from_request(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/baseline", methods=["POST"])
+def api_roi_task_baseline(task_id: str):
+    payload = request.get_json(silent=True) or {}
+    out = save_task_baseline(task_id, payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/approve-baseline", methods=["POST"])
+def api_roi_task_approve_baseline(task_id: str):
+    out = approve_task_baseline(task_id, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/results", methods=["GET"])
+def api_roi_task_results(task_id: str):
+    out = task_result(task_id, project_keys=_effective_project_keys())
+    return jsonify(out), (200 if out.get("ok") else 404)
+
+
+@app.route("/api/roi/mappings", methods=["GET"])
+def api_roi_mappings_list():
+    return jsonify(list_roi_mappings(project_keys=_effective_project_keys())), 200
+
+
+@app.route("/api/roi/mappings", methods=["POST"])
+def api_roi_mappings_create():
+    payload = request.get_json(silent=True) or {}
+    out = create_roi_mapping(payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return jsonify(out), (200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/dashboard/executive", methods=["GET"])
+def api_roi_dashboard_executive():
+    days = int(request.args.get("days", "30"))
+    data = executive_dashboard(project_keys=_effective_project_keys(), days=days)
+    data["customer"] = _customer_context_from_request()
     return jsonify(data), 200
 
 
