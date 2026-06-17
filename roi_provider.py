@@ -33,29 +33,61 @@ def _scope_filter_sql(alias: str, project_keys: list[str] | None) -> tuple[str, 
 
 
 def simulate_roi(payload: dict) -> dict:
-    """Pure ROI simulation used by the configuration screen preview."""
-    method = payload.get("calculation_method") or payload.get("method") or "business_result"
+    """Pure ROI simulation used by the configuration screen preview.
+
+    Supported methods:
+      - time_saved: H:H / Tempo economizado
+      - business_result: Resultado de negócio
+      - hybrid: Tempo economizado + resultado de negócio
+    """
+    raw_method = str(payload.get("calculation_method") or payload.get("method") or "business_result").strip()
+    normalized = raw_method.lower()
+    method_aliases = {
+        "time_saved": "time_saved",
+        "time": "time_saved",
+        "h_h": "time_saved",
+        "h:h": "time_saved",
+        "tempo": "time_saved",
+        "business_result": "business_result",
+        "result": "business_result",
+        "event_value": "business_result",
+        "resultado_negocio": "business_result",
+        "hybrid": "hybrid",
+        "hibrido": "hybrid",
+    }
+    method = method_aliases.get(normalized, normalized)
+
     attribution_pct = _safe_float(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100)), 100.0)
     attribution_factor = max(0.0, min(100.0, attribution_pct)) / 100.0
 
     agent_monthly_cost = _safe_float(payload.get("agent_monthly_cost_brl", payload.get("monthly_ai_cost_brl", 0)))
-    implementation_cost = _safe_float(payload.get("implementation_cost_brl", 0))
+    implementation_cost = _safe_float(payload.get("implementation_cost_brl", payload.get("setup_cost_brl", 0)))
     human_review_pct = _safe_float(payload.get("human_review_pct", 0))
     human_review_factor = max(0.0, min(100.0, human_review_pct)) / 100.0
 
-    if method in ("time_saved", "time", "h_h"):
-        avg_manual_time_min = _safe_float(payload.get("avg_manual_time_min"))
-        monthly_volume = _safe_float(payload.get("monthly_volume", payload.get("expected_events_month", 0)))
-        cost_per_hour = _safe_float(payload.get("cost_per_hour_brl", payload.get("cost_per_hour", 0)))
-        coverage_pct = _safe_float(payload.get("coverage_pct", 100)) / 100.0
-        gross_savings = (avg_manual_time_min / 60.0) * monthly_volume * cost_per_hour * coverage_pct * attribution_factor
-        calculation_base = "avg_manual_time_min * monthly_volume * cost_per_hour * coverage_pct * attribution_pct"
+    avg_manual_time_min = _safe_float(payload.get("avg_manual_time_min", payload.get("saved_time_min", 0)))
+    monthly_volume = _safe_float(payload.get("monthly_volume", payload.get("expected_events_month", 0)))
+    cost_per_hour = _safe_float(payload.get("cost_per_hour_brl", payload.get("hourly_cost_brl", payload.get("cost_per_hour", 0))))
+    coverage_pct = _safe_float(payload.get("coverage_pct", payload.get("automation_pct", 100))) / 100.0
+
+    unit_value = _safe_float(payload.get("event_unit_value_brl", payload.get("unit_value_brl", 0)))
+    events_month = _safe_float(payload.get("expected_events_month", payload.get("monthly_volume", 0)))
+
+    time_savings = (avg_manual_time_min / 60.0) * monthly_volume * cost_per_hour * coverage_pct
+    business_savings = unit_value * events_month
+
+    if method == "time_saved":
+        gross_before_attribution = time_savings
+        calculation_base = "(avg_manual_time_min / 60) * monthly_volume * cost_per_hour_brl * coverage_pct * attribution_pct"
+    elif method == "hybrid":
+        gross_before_attribution = time_savings + business_savings
+        calculation_base = "(((avg_manual_time_min / 60) * monthly_volume * cost_per_hour_brl * coverage_pct) + (event_unit_value_brl * expected_events_month)) * attribution_pct"
     else:
-        unit_value = _safe_float(payload.get("event_unit_value_brl", payload.get("unit_value_brl", 0)))
-        events_month = _safe_float(payload.get("expected_events_month", payload.get("monthly_volume", 0)))
-        gross_savings = unit_value * events_month * attribution_factor
+        method = "business_result"
+        gross_before_attribution = business_savings
         calculation_base = "event_unit_value_brl * expected_events_month * attribution_pct"
 
+    gross_savings = gross_before_attribution * attribution_factor
     review_penalty = gross_savings * human_review_factor
     gross_after_review = max(gross_savings - review_penalty, 0.0)
     total_monthly_cost = agent_monthly_cost
@@ -70,6 +102,8 @@ def simulate_roi(payload: dict) -> dict:
         "calculated_at": _now_iso(),
         "method": method,
         "calculation_base": calculation_base,
+        "time_savings_brl": round(time_savings * attribution_factor, 2),
+        "business_savings_brl": round(business_savings * attribution_factor, 2),
         "gross_savings_brl": round(gross_savings, 2),
         "human_review_penalty_brl": round(review_penalty, 2),
         "gross_savings_after_review_brl": round(gross_after_review, 2),

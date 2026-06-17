@@ -278,6 +278,235 @@ TAGS_METADATA = [
 ]
 
 
+
+def _roi_calculation_methods() -> dict:
+    """Catálogo estático dos métodos de cálculo de ROI para o frontend montar formulários dinâmicos.
+
+    Não depende de banco. O valor de `key` deve ser enviado em `calculation_method` nos endpoints
+    de simulação, criação e atualização de configuração.
+    """
+    common_fields = [
+        {
+            "label": "Fator de atribuição ao GABBI (%)",
+            "type": "number",
+            "unit": "%",
+            "required": True,
+            "default": 80,
+            "min": 0,
+            "max": 100,
+            "help": "Percentual do benefício atribuído ao GABBI.",
+        },
+        {
+            "key": "agent_monthly_cost_brl",
+            "label": "Custo mensal do agente",
+            "type": "currency",
+            "currency": "BRL",
+            "required": True,
+            "default": 0,
+            "help": "Custo mensal do agente/solução usado no cálculo do ROI.",
+        },
+        {
+            "key": "implementation_cost_brl",
+            "label": "Custo de implantação (setup)",
+            "type": "currency",
+            "currency": "BRL",
+            "required": False,
+            "default": 0,
+            "help": "Usado para calcular payback. Se não informado, o payback considera o custo mensal.",
+        },
+        {
+            "key": "requires_evidence",
+            "label": "Exigir evidência",
+            "type": "boolean",
+            "required": False,
+            "default": True,
+            "help": "Indica se a premissa precisa de evidência para publicação oficial.",
+        },
+        {
+            "key": "human_review_pct",
+            "label": "Revisão humana (%)",
+            "type": "number",
+            "unit": "%",
+            "required": False,
+            "default": 0,
+            "min": 0,
+            "max": 100,
+            "help": "Percentual do benefício reduzido por necessidade de revisão humana.",
+        },
+        {
+            "key": "responsible_area",
+            "label": "Área responsável",
+            "type": "text",
+            "required": False,
+            "help": "Área de negócio responsável pela configuração.",
+        },
+        {
+            "key": "notes",
+            "label": "Observações",
+            "type": "textarea",
+            "required": False,
+            "maxLength": 500,
+            "help": "Premissas, fontes dos dados e contexto da configuração.",
+        },
+    ]
+
+    time_fields = [
+        {
+            "key": "avg_manual_time_min",
+            "label": "Tempo economizado por tarefa",
+            "type": "number",
+            "unit": "min",
+            "required": True,
+            "default": 0,
+            "help": "Tempo manual médio economizado por execução/tarefa.",
+        },
+        {
+            "key": "cost_per_hour_brl",
+            "label": "Custo horário",
+            "type": "currency",
+            "currency": "BRL",
+            "required": True,
+            "default": 0,
+            "help": "Custo hora usado para converter tempo economizado em valor financeiro.",
+        },
+        {
+            "key": "monthly_volume",
+            "label": "Volume de tarefas/mês",
+            "type": "integer",
+            "required": True,
+            "default": 0,
+            "help": "Quantidade mensal de tarefas/processos impactados.",
+        },
+        {
+            "key": "coverage_pct",
+            "label": "Automação efetiva (%)",
+            "type": "number",
+            "unit": "%",
+            "required": True,
+            "default": 100,
+            "min": 0,
+            "max": 100,
+            "help": "Percentual do volume realmente automatizado/assistido.",
+        },
+    ]
+
+    business_fields = [
+        {
+            "key": "value_event_name",
+            "label": "Evento de valor",
+            "type": "select_or_text",
+            "required": True,
+            "examples": ["Contratação realizada", "Chamado resolvido", "Venda recuperada", "Documento aprovado"],
+            "help": "Evento de negócio que gera valor financeiro.",
+        },
+        {
+            "key": "event_unit_value_brl",
+            "aliases": ["unit_value_brl"],
+            "label": "Valor unitário do evento",
+            "type": "currency",
+            "currency": "BRL",
+            "required": True,
+            "default": 0,
+            "help": "Valor financeiro atribuído a cada evento de negócio.",
+        },
+        {
+            "key": "expected_events_month",
+            "label": "Eventos esperados/mês",
+            "type": "integer",
+            "required": True,
+            "default": 0,
+            "help": "Quantidade mensal esperada de eventos de valor.",
+        },
+        {
+            "key": "baseline_monthly_brl",
+            "label": "Baseline mensal atual",
+            "type": "currency",
+            "currency": "BRL",
+            "required": False,
+            "default": 0,
+            "help": "Valor de referência atual do processo antes do GABBI.",
+        },
+    ]
+
+    return {
+        "methods": [
+            {
+                "key": "time_saved",
+                "aliases": ["TIME_SAVED", "time", "h_h"],
+                "label": "H:H / Tempo economizado",
+                "description": "Calcula o valor com base no tempo economizado multiplicado pelo custo horário.",
+                "formula": "((avg_manual_time_min / 60) * monthly_volume * cost_per_hour_brl * coverage_pct) * attribution_pct",
+                "required_fields": ["avg_manual_time_min", "cost_per_hour_brl", "monthly_volume", "coverage_pct", "attribution_pct", "agent_monthly_cost_brl"],
+                "fields": time_fields + common_fields,
+                "sample_payload": {
+                    "calculation_method": "time_saved",
+                    "avg_manual_time_min": 25,
+                    "cost_per_hour_brl": 65,
+                    "monthly_volume": 320,
+                    "coverage_pct": 90,
+                    "attribution_pct": 80,
+                    "agent_monthly_cost_brl": 4750,
+                    "implementation_cost_brl": 15000,
+                    "human_review_pct": 0,
+                    "responsible_area": "RH",
+                },
+            },
+            {
+                "key": "business_result",
+                "aliases": ["BUSINESS_RESULT", "result", "event_value"],
+                "label": "Resultado de negócio",
+                "description": "Calcula o valor com base em eventos de negócio gerados pela tarefa.",
+                "formula": "event_unit_value_brl * expected_events_month * attribution_pct",
+                "required_fields": ["value_event_name", "event_unit_value_brl", "expected_events_month", "attribution_pct", "agent_monthly_cost_brl"],
+                "fields": business_fields + common_fields,
+                "sample_payload": {
+                    "calculation_method": "business_result",
+                    "value_event_name": "Contratação realizada",
+                    "event_unit_value_brl": 8500,
+                    "expected_events_month": 12,
+                    "attribution_pct": 80,
+                    "agent_monthly_cost_brl": 4750,
+                    "implementation_cost_brl": 0,
+                    "human_review_pct": 0,
+                    "responsible_area": "RH",
+                },
+            },
+            {
+                "key": "hybrid",
+                "aliases": ["HYBRID", "hibrido"],
+                "label": "Híbrido",
+                "description": "Combina tempo economizado e resultado de negócio para medir valor total.",
+                "formula": "valor_tempo + valor_eventos, com revisão humana, custo e atribuição aplicados no resultado final.",
+                "required_fields": ["avg_manual_time_min", "cost_per_hour_brl", "monthly_volume", "coverage_pct", "value_event_name", "event_unit_value_brl", "expected_events_month", "attribution_pct", "agent_monthly_cost_brl"],
+                "fields": time_fields + business_fields + common_fields,
+                "sample_payload": {
+                    "calculation_method": "hybrid",
+                    "avg_manual_time_min": 25,
+                    "cost_per_hour_brl": 65,
+                    "monthly_volume": 320,
+                    "coverage_pct": 90,
+                    "value_event_name": "Contratação realizada",
+                    "event_unit_value_brl": 8500,
+                    "expected_events_month": 12,
+                    "attribution_pct": 80,
+                    "agent_monthly_cost_brl": 4750,
+                    "implementation_cost_brl": 15000,
+                    "human_review_pct": 0,
+                    "responsible_area": "RH",
+                },
+            },
+        ],
+        "usage": {
+            "field_to_send": "calculation_method",
+            "endpoints": [
+                "POST /api/roi/configurations/simulate",
+                "POST /api/roi/configurations",
+                "PATCH /api/roi/configurations/{id}",
+            ],
+            "note": "Este catálogo é estático e não exige tabela nova. Serve para o front montar o formulário correto por método.",
+        },
+    }
+
 def _openapi_spec() -> dict:
     header_params = [
         {"name": "clientKey", "in": "header", "schema": {"type": "string"}, "description": "ID do cliente na tabela public.Customer. A API resolve os projetos do cliente e filtra por project_key IN (Project.id[])."},
@@ -325,7 +554,8 @@ def _openapi_spec() -> dict:
             "/api/finops/usage": {"post": {"tags": ["06. Ingestão"], "summary": "Registrar uso de IA", "description": "Registra tokens, modelo, agente, projeto, tarefa e workflow para cálculo FinOps.", "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageIngestRequest"}}}}, "responses": {"200": {"description": "Uso registrado"}, "400": {"description": "Payload inválido"}, "500": {"description": "Erro interno"}}}},
             "/api/finops/pricing": {"post": {"tags": ["06. Ingestão"], "summary": "Atualizar precificação de modelo", "description": "Atualiza o custo por 1k tokens do modelo.", "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PricingRequest"}}}}, "responses": {"200": {"description": "Precificação salva"}, "400": {"description": "Payload inválido"}, "500": {"description": "Erro interno"}}}},
 
-            "/api/roi/configurations/simulate": {"post": {"tags": ["07. ROI Configurações"], "summary": "Simular ROI sem salvar", "description": "Usado pela lateral de simulação instantânea da tela de configuração. Calcula benefício bruto, custo, economia líquida, ROI e payback.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiSimulationRequest"}}}}, "responses": json_response("#/components/schemas/RoiSimulationResponse", "Simulação calculada")}},
+            "/api/roi/calculation-methods": {"get": {"tags": ["07. ROI Configurações"], "summary": "Catálogo de métodos de cálculo de ROI", "description": "Retorna os métodos disponíveis para o front montar formulários dinâmicos. Não depende de banco.", "parameters": header_params, "responses": json_response("#/components/schemas/RoiCalculationMethodsResponse", "Métodos retornados")}},
+            "/api/roi/configurations/simulate": {"post": {"tags": ["07. ROI Configurações"], "summary": "Simular ROI sem salvar", "description": "Usado pela lateral de simulação instantânea da tela de configuração. Calcula benefício bruto, custo, economia líquida, ROI e payback. Este endpoint é stateless e não grava dados no banco.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiSimulationRequest"}}}}, "responses": json_response("#/components/schemas/RoiSimulationResponse", "Simulação calculada")}},
             "/api/roi/configurations": {
                 "get": {"tags": ["07. ROI Configurações"], "summary": "Listar configurações de ROI", "description": "Lista configurações no escopo do cliente informado via clientKey.", "parameters": header_params + [{"name": "status", "in": "query", "schema": {"type": "string", "enum": ["DRAFT", "PUBLISHED", "ARCHIVED"]}}], "responses": json_response("#/components/schemas/RoiConfigurationList", "Configurações listadas")},
                 "post": {"tags": ["07. ROI Configurações"], "summary": "Criar configuração de ROI", "description": "Cria uma configuração em rascunho e já calcula a simulação inicial.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiConfigurationRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Configuração criada")},
@@ -367,6 +597,7 @@ def _openapi_spec() -> dict:
                 "UsageIngestRequest": {"type": "object", "required": ["interaction_id", "session_id", "project_key", "agent_name", "model", "input_tokens", "output_tokens", "total_tokens"], "properties": {"interaction_id": {"type": "string"}, "session_id": {"type": "string"}, "project_key": {"type": "string"}, "agent_name": {"type": "string"}, "model": {"type": "string"}, "input_tokens": {"type": "integer"}, "output_tokens": {"type": "integer"}, "total_tokens": {"type": "integer"}, "source_type": {"type": "string", "enum": ["MANUAL", "AUTOMATION"]}, "task_id": {"type": "string"}, "flow_id": {"type": "string"}}},
                 "PricingRequest": {"type": "object", "required": ["model", "cost_per_1k_tokens_brl"], "properties": {"model": {"type": "string", "example": "gpt-4o"}, "cost_per_1k_tokens_brl": {"type": "number", "example": 0.85}, "min_tokens": {"type": "integer"}, "min_cost_brl": {"type": "number"}}},
 
+                "RoiCalculationMethodsResponse": {"type": "object", "properties": {"methods": {"type": "array", "items": {"type": "object", "properties": {"key": {"type": "string", "example": "time_saved"}, "label": {"type": "string", "example": "H:H / Tempo economizado"}, "description": {"type": "string"}, "formula": {"type": "string"}, "required_fields": {"type": "array", "items": {"type": "string"}}, "fields": {"type": "array", "items": {"type": "object"}}, "sample_payload": {"type": "object"}}}}, "usage": {"type": "object"}}},
                 "RoiSimulationRequest": {"type": "object", "properties": {"calculation_method": {"type": "string", "enum": ["business_result", "time_saved", "hybrid"], "example": "business_result"}, "value_event_name": {"type": "string", "example": "Contratação realizada"}, "event_unit_value_brl": {"type": "number", "example": 8500}, "expected_events_month": {"type": "integer", "example": 12}, "attribution_pct": {"type": "number", "example": 80}, "baseline_monthly_brl": {"type": "number", "example": 102000}, "agent_monthly_cost_brl": {"type": "number", "example": 4750}, "human_review_pct": {"type": "number", "example": 0}, "responsible_area": {"type": "string", "example": "RH"}}},
                 "RoiSimulationResponse": {"type": "object", "properties": {"gross_savings_brl": {"type": "number", "example": 81600}, "ai_cost_brl": {"type": "number", "example": 4750}, "net_savings_brl": {"type": "number", "example": 76850}, "roi_pct": {"type": "number", "example": 1617.89}, "payback_months": {"type": "number", "example": 0.06}, "payback_days": {"type": "number", "example": 2}, "chart": {"type": "object"}}},
                 "RoiConfigurationRequest": {"allOf": [{"$ref": "#/components/schemas/RoiSimulationRequest"}], "type": "object", "properties": {"project_id": {"type": "string", "description": "Project.id. Se omitido, usa o primeiro projeto do cliente."}, "task_id": {"type": "string"}, "agent_id": {"type": "string"}, "workflow_id": {"type": "string"}, "dag_id": {"type": "string"}, "name": {"type": "string", "example": "ROI Talent Finder"}, "description": {"type": "string"}, "require_evidence": {"type": "boolean", "example": True}, "human_review_required": {"type": "boolean", "example": False}, "assumptions_json": {"type": "object"}}},
@@ -774,6 +1005,11 @@ def _current_user_id() -> str | None:
     return session.get("user_id") or request.headers.get("X-User-Id") or request.headers.get("userId")
 
 
+@app.route("/api/roi/calculation-methods", methods=["GET"])
+def api_roi_calculation_methods():
+    return jsonify(_roi_calculation_methods()), 200
+
+
 @app.route("/api/roi/configurations", methods=["GET"])
 def api_roi_configurations_list():
     status = request.args.get("status") or None
@@ -805,7 +1041,7 @@ def api_roi_configuration_patch(config_id: str):
 @app.route("/api/roi/configurations/simulate", methods=["POST"])
 def api_roi_configuration_simulate_new():
     payload = request.get_json(silent=True) or {}
-    return jsonify({"ok": True, "simulation": simulate_roi(payload)}), 200
+    return jsonify({"ok": True, "persisted": False, "simulation": simulate_roi(payload)}), 200
 
 
 @app.route("/api/roi/configurations/<config_id>/simulate", methods=["POST"])
@@ -814,7 +1050,7 @@ def api_roi_configuration_simulate_existing(config_id: str):
     if not current:
         return jsonify({"ok": False, "error": "not_found"}), 404
     payload = {**current, **(request.get_json(silent=True) or {})}
-    return jsonify({"ok": True, "simulation": simulate_roi(payload)}), 200
+    return jsonify({"ok": True, "persisted": False, "simulation": simulate_roi(payload)}), 200
 
 
 @app.route("/api/roi/configurations/<config_id>/publish", methods=["POST"])
