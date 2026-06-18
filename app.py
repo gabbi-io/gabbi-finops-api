@@ -70,7 +70,11 @@ _allowed_origins = [
 
 CORS(
     app,
-    resources={r"/api/*": {"origins": _allowed_origins}},
+    resources={
+        r"/api/*": {"origins": _allowed_origins},
+        r"/api/roi/*": {"origins": _allowed_origins},
+        r"/api/finops/*": {"origins": _allowed_origins},
+    },
     supports_credentials=True,
     allow_headers=[
         "Content-Type",
@@ -287,6 +291,7 @@ def _roi_calculation_methods() -> dict:
     """
     common_fields = [
         {
+            "key": "attribution_pct",
             "label": "Fator de atribuição ao GABBI (%)",
             "type": "number",
             "unit": "%",
