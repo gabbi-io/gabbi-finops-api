@@ -8,19 +8,33 @@ import json
 from db import fetch_all, fetch_one, execute, execute_returning, table_exists
 
 
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
 def _safe_float(v: Any, default: float = 0.0) -> float:
     try:
-        return float(v or 0)
+        if v is None or v == "":
+            return default
+        if isinstance(v, str):
+            # aceita formatos simples vindos de máscara pt-BR
+            v = v.replace("R$", "").replace("%", "").strip()
+            if "," in v and "." in v:
+                v = v.replace(".", "").replace(",", ".")
+            elif "," in v:
+                v = v.replace(",", ".")
+        return float(v)
     except Exception:
         return default
 
 
 def _safe_int(v: Any, default: int = 0) -> int:
     try:
-        return int(v or 0)
+        if v is None or v == "":
+            return default
+        return int(float(v))
     except Exception:
         return default
-
 
 
 def _json_safe(obj: Any):
@@ -38,7 +52,21 @@ def _json_safe(obj: Any):
 
 
 def _json_dumps(obj: Any) -> str:
-    return json.dumps(_json_safe(obj), ensure_ascii=False)
+    return json.dumps(_json_safe(obj or {}), ensure_ascii=False)
+
+
+def _json_loads_maybe(value: Any) -> dict:
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str):
+        try:
+            data = json.loads(value)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    return {}
 
 
 def _safe_percent(v: Any, default: float = 0.0) -> float:
@@ -65,93 +93,187 @@ def _scope_filter_sql(alias: str, project_keys: list[str] | None) -> tuple[str, 
     return f"{alias}.project_id = any(%(project_keys)s)", {"project_keys": project_keys}
 
 
+METHOD_ALIASES = {
+    "time_saved": "time_saved",
+    "time": "time_saved",
+    "h_h": "time_saved",
+    "h:h": "time_saved",
+    "tempo": "time_saved",
+    "tempo_economizado": "time_saved",
+    "business_result": "business_result",
+    "result": "business_result",
+    "event_value": "business_result",
+    "resultado_negocio": "business_result",
+    "resultado_de_negocio": "business_result",
+    "hybrid": "hybrid",
+    "hibrido": "hybrid",
+}
+
+
+def _normalize_method(value: Any) -> str:
+    raw = str(value or "business_result").strip().lower()
+    return METHOD_ALIASES.get(raw, raw if raw in {"time_saved", "business_result", "hybrid"} else "business_result")
+
+
+def _payload_value(payload: dict, *keys: str, default: Any = None) -> Any:
+    for k in keys:
+        if k in payload and payload.get(k) is not None:
+            return payload.get(k)
+    return default
+
+
+def _normalize_roi_payload(payload: dict | None, base: dict | None = None) -> dict:
+    """Normaliza aliases e preserva todos os parâmetros no assumptions_json.
+
+    Esta função é o ponto central para garantir que os 3 métodos persistam os campos:
+    - time_saved: campos de tempo
+    - business_result: campos de evento
+    - hybrid: campos de tempo + evento
+    """
+    merged = dict(base or {})
+    merged.update(dict(payload or {}))
+
+    # Se vier do banco, pode trazer assumptions_json com os campos reais do formulário.
+    assumptions = _json_loads_maybe(merged.get("assumptions_json"))
+    assumptions.update(dict(payload or {}))
+    merged.update(assumptions)
+
+    method = _normalize_method(_payload_value(merged, "calculation_method", "method", default="business_result"))
+
+    normalized = dict(merged)
+    normalized["calculation_method"] = method
+
+    # Campos de tempo
+    normalized["avg_manual_time_min"] = _safe_float(_payload_value(merged, "avg_manual_time_min", "saved_time_min", "manual_time_min", default=0))
+    normalized["cost_per_hour_brl"] = _safe_float(_payload_value(merged, "cost_per_hour_brl", "hourly_cost_brl", "cost_per_hour", default=0))
+    normalized["monthly_volume"] = _safe_float(_payload_value(merged, "monthly_volume", "volume_month", "task_volume_month", default=0))
+    normalized["coverage_pct"] = _safe_percent(_payload_value(merged, "coverage_pct", "automation_pct", "automation_effective_pct", default=100), 100.0)
+
+    # Campos de evento/resultado de negócio
+    normalized["value_event_name"] = _payload_value(merged, "value_event_name", "event_name", "value_event", default=None)
+    normalized["event_unit_value_brl"] = _safe_float(_payload_value(merged, "event_unit_value_brl", "unit_value_brl", "value_event_unit_brl", default=0))
+    normalized["expected_events_month"] = _safe_float(_payload_value(merged, "expected_events_month", "events_expected_month", "events_month", default=0))
+    normalized["baseline_monthly_brl"] = _safe_float(_payload_value(merged, "baseline_monthly_brl", "current_monthly_baseline_brl", "baseline_brl", default=0))
+
+    # Campos comuns
+    normalized["attribution_pct"] = _safe_percent(_payload_value(merged, "attribution_pct", "gabbi_attribution_pct", default=100), 100.0)
+    normalized["agent_monthly_cost_brl"] = _safe_float(_payload_value(merged, "agent_monthly_cost_brl", "monthly_ai_cost_brl", "gabbi_monthly_cost_brl", default=0))
+    normalized["implementation_cost_brl"] = _safe_float(_payload_value(merged, "implementation_cost_brl", "setup_cost_brl", "implantation_cost_brl", default=0))
+    normalized["human_review_pct"] = _safe_percent(_payload_value(merged, "human_review_pct", default=0), 0.0)
+    normalized["require_evidence"] = bool(_payload_value(merged, "require_evidence", "requires_evidence", default=False))
+    normalized["requires_evidence"] = normalized["require_evidence"]
+    normalized["human_review_required"] = bool(_payload_value(merged, "human_review_required", default=False))
+    normalized["responsible_area"] = _payload_value(merged, "responsible_area", "business_area", "area", default=None)
+    normalized["notes"] = _payload_value(merged, "notes", "observations", default=None)
+
+    # Mantém aliases úteis para o front ao abrir a configuração.
+    normalized["unit_value_brl"] = normalized["event_unit_value_brl"]
+    normalized["saved_time_min"] = normalized["avg_manual_time_min"]
+    normalized["hourly_cost_brl"] = normalized["cost_per_hour_brl"]
+    normalized["automation_pct"] = normalized["coverage_pct"]
+    normalized["gabbi_attribution_pct"] = normalized["attribution_pct"]
+    normalized["setup_cost_brl"] = normalized["implementation_cost_brl"]
+
+    return _json_safe(normalized)
+
+
+def _assumptions_for_storage(payload: dict) -> dict:
+    normalized = _normalize_roi_payload(payload)
+    # Remove campos técnicos vindos da linha do banco para não poluir o formulário.
+    for k in [
+        "id", "customer_id", "project_id", "created_at", "updated_at", "created_by", "updated_by",
+        "published_at", "published_by", "status", "last_simulation_json", "assumptions_json",
+    ]:
+        normalized.pop(k, None)
+    return normalized
+
+
+def _hydrate_configuration(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    out = _json_safe(dict(row))
+    assumptions = _json_loads_maybe(out.get("assumptions_json"))
+    # assumptions primeiro; colunas depois; normalização no final preserva campos específicos.
+    hydrated = {**assumptions, **out}
+    normalized = _normalize_roi_payload(hydrated)
+    hydrated.update(normalized)
+    hydrated["assumptions_json"] = assumptions or _assumptions_for_storage(hydrated)
+    if out.get("last_simulation_json"):
+        hydrated["last_simulation_json"] = _json_loads_maybe(out.get("last_simulation_json")) if isinstance(out.get("last_simulation_json"), str) else out.get("last_simulation_json")
+    return _json_safe(hydrated)
+
+
+# -----------------------------------------------------------------------------
+# Calculation
+# -----------------------------------------------------------------------------
+
 def simulate_roi(payload: dict) -> dict:
     """Pure ROI simulation used by the configuration screen preview.
 
-    Supported methods:
-      - time_saved: H:H / Tempo economizado
-      - business_result: Resultado de negócio
-      - hybrid: Tempo economizado + resultado de negócio
+    Stateless: não grava no banco.
     """
-    raw_method = str(payload.get("calculation_method") or payload.get("method") or "business_result").strip()
-    normalized = raw_method.lower()
-    method_aliases = {
-        "time_saved": "time_saved",
-        "time": "time_saved",
-        "h_h": "time_saved",
-        "h:h": "time_saved",
-        "tempo": "time_saved",
-        "business_result": "business_result",
-        "result": "business_result",
-        "event_value": "business_result",
-        "resultado_negocio": "business_result",
-        "hybrid": "hybrid",
-        "hibrido": "hybrid",
-    }
-    method = method_aliases.get(normalized, normalized)
+    p = _normalize_roi_payload(payload)
+    method = p["calculation_method"]
 
-    attribution_pct = _safe_percent(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100)), 100.0)
-    attribution_factor = attribution_pct / 100.0
+    attribution_factor = _safe_percent(p.get("attribution_pct"), 100.0) / 100.0
+    agent_monthly_cost = _safe_float(p.get("agent_monthly_cost_brl"))
+    implementation_cost = _safe_float(p.get("implementation_cost_brl"))
+    human_review_factor = _safe_percent(p.get("human_review_pct"), 0.0) / 100.0
 
-    agent_monthly_cost = _safe_float(payload.get("agent_monthly_cost_brl", payload.get("monthly_ai_cost_brl", 0)))
-    implementation_cost = _safe_float(payload.get("implementation_cost_brl", payload.get("setup_cost_brl", 0)))
-    human_review_pct = _safe_percent(payload.get("human_review_pct", 0), 0.0)
-    human_review_factor = human_review_pct / 100.0
+    avg_manual_time_min = _safe_float(p.get("avg_manual_time_min"))
+    monthly_volume = _safe_float(p.get("monthly_volume"))
+    cost_per_hour = _safe_float(p.get("cost_per_hour_brl"))
+    coverage_factor = _safe_percent(p.get("coverage_pct"), 100.0) / 100.0
 
-    avg_manual_time_min = _safe_float(payload.get("avg_manual_time_min", payload.get("saved_time_min", 0)))
-    monthly_volume = _safe_float(payload.get("monthly_volume", payload.get("expected_events_month", 0)))
-    cost_per_hour = _safe_float(payload.get("cost_per_hour_brl", payload.get("hourly_cost_brl", payload.get("cost_per_hour", 0))))
-    coverage_pct = _safe_percent(payload.get("coverage_pct", payload.get("automation_pct", 100)), 100.0) / 100.0
+    unit_value = _safe_float(p.get("event_unit_value_brl"))
+    events_month = _safe_float(p.get("expected_events_month"))
 
-    unit_value = _safe_float(payload.get("event_unit_value_brl", payload.get("unit_value_brl", 0)))
-    events_month = _safe_float(payload.get("expected_events_month", payload.get("monthly_volume", 0)))
-
-    time_savings = (avg_manual_time_min / 60.0) * monthly_volume * cost_per_hour * coverage_pct
-    business_savings = unit_value * events_month
+    time_savings_raw = (avg_manual_time_min / 60.0) * monthly_volume * cost_per_hour * coverage_factor
+    business_savings_raw = unit_value * events_month
 
     if method == "time_saved":
-        gross_before_attribution = time_savings
+        gross_before_attribution = time_savings_raw
         calculation_base = "(avg_manual_time_min / 60) * monthly_volume * cost_per_hour_brl * coverage_pct * attribution_pct"
     elif method == "hybrid":
-        gross_before_attribution = time_savings + business_savings
+        gross_before_attribution = time_savings_raw + business_savings_raw
         calculation_base = "(((avg_manual_time_min / 60) * monthly_volume * cost_per_hour_brl * coverage_pct) + (event_unit_value_brl * expected_events_month)) * attribution_pct"
     else:
         method = "business_result"
-        gross_before_attribution = business_savings
+        gross_before_attribution = business_savings_raw
         calculation_base = "event_unit_value_brl * expected_events_month * attribution_pct"
 
     gross_savings = gross_before_attribution * attribution_factor
     review_penalty = gross_savings * human_review_factor
     gross_after_review = max(gross_savings - review_penalty, 0.0)
-    total_monthly_cost = agent_monthly_cost
-    net_savings = gross_after_review - total_monthly_cost
-    roi_pct = (net_savings / total_monthly_cost * 100.0) if total_monthly_cost > 0 else 0.0
-    payback_months = (implementation_cost / net_savings) if implementation_cost > 0 and net_savings > 0 else ((total_monthly_cost / net_savings) if net_savings > 0 else None)
+    net_savings = gross_after_review - agent_monthly_cost
+    roi_pct = (net_savings / agent_monthly_cost * 100.0) if agent_monthly_cost > 0 else 0.0
+    payback_months = (implementation_cost / net_savings) if implementation_cost > 0 and net_savings > 0 else ((agent_monthly_cost / net_savings) if net_savings > 0 else None)
 
-    benefit_share_pct = (gross_after_review / (gross_after_review + total_monthly_cost) * 100.0) if (gross_after_review + total_monthly_cost) > 0 else 0.0
-    cost_share_pct = 100.0 - benefit_share_pct if (gross_after_review + total_monthly_cost) > 0 else 0.0
+    benefit_share_pct = (gross_after_review / (gross_after_review + agent_monthly_cost) * 100.0) if (gross_after_review + agent_monthly_cost) > 0 else 0.0
+    cost_share_pct = 100.0 - benefit_share_pct if (gross_after_review + agent_monthly_cost) > 0 else 0.0
 
-    return {
+    return _json_safe({
         "calculated_at": _now_iso(),
         "method": method,
         "calculation_base": calculation_base,
-        "time_savings_brl": round(time_savings * attribution_factor, 2),
-        "business_savings_brl": round(business_savings * attribution_factor, 2),
+        "time_savings_brl": round(time_savings_raw * attribution_factor, 2),
+        "business_savings_brl": round(business_savings_raw * attribution_factor, 2),
         "gross_savings_brl": round(gross_savings, 2),
         "human_review_penalty_brl": round(review_penalty, 2),
         "gross_savings_after_review_brl": round(gross_after_review, 2),
-        "ai_cost_brl": round(total_monthly_cost, 2),
+        "ai_cost_brl": round(agent_monthly_cost, 2),
         "net_savings_brl": round(net_savings, 2),
         "roi_pct": round(roi_pct, 2),
         "payback_months": round(payback_months, 4) if payback_months is not None else None,
         "payback_days": round(payback_months * 30, 1) if payback_months is not None else None,
-        "chart": {
-            "benefit_pct": round(benefit_share_pct, 2),
-            "cost_pct": round(cost_share_pct, 2),
-        },
-        "inputs": payload,
-    }
+        "chart": {"benefit_pct": round(benefit_share_pct, 2), "cost_pct": round(cost_share_pct, 2)},
+        "inputs": p,
+    })
 
+
+# -----------------------------------------------------------------------------
+# Configurations
+# -----------------------------------------------------------------------------
 
 def list_roi_configurations(project_keys: list[str] | None = None, status: str | None = None) -> dict:
     where, params = _scope_filter_sql("c", project_keys)
@@ -167,18 +289,21 @@ def list_roi_configurations(project_keys: list[str] | None = None, status: str |
         """,
         params,
     ) if table_exists("roi", "roi_configuration") else []
-    return {"items": rows, "total": len(rows)}
+    hydrated = [_hydrate_configuration(r) for r in rows]
+    return {"items": hydrated, "total": len(hydrated)}
 
 
 def create_roi_configuration(payload: dict, customer_ctx: dict, user_id: str | None = None) -> dict:
-    project_id = payload.get("project_id") or payload.get("project_key")
+    p = _normalize_roi_payload(payload)
+    project_id = p.get("project_id") or p.get("project_key")
     if not project_id:
         projects = customer_ctx.get("projects") or []
         project_id = projects[0].get("id") if projects else None
     if not project_id:
         return {"ok": False, "error": "missing_project_id"}
 
-    simulation = simulate_roi(payload)
+    assumptions = _assumptions_for_storage(p)
+    simulation = simulate_roi(assumptions)
     rows = execute_returning(
         """
         insert into roi.roi_configuration (
@@ -200,29 +325,29 @@ def create_roi_configuration(payload: dict, customer_ctx: dict, user_id: str | N
         {
             "customer_id": customer_ctx.get("customer_id"),
             "project_id": project_id,
-            "task_id": payload.get("task_id"),
-            "agent_id": payload.get("agent_id"),
-            "workflow_id": payload.get("workflow_id"),
-            "dag_id": payload.get("dag_id"),
-            "name": payload.get("name") or payload.get("title") or "Configuração ROI",
-            "description": payload.get("description"),
-            "calculation_method": payload.get("calculation_method") or payload.get("method") or "business_result",
-            "value_event_name": payload.get("value_event_name") or payload.get("event_name"),
-            "event_unit_value_brl": _safe_float(payload.get("event_unit_value_brl", payload.get("unit_value_brl", 0))),
-            "expected_events_month": _safe_float(payload.get("expected_events_month", 0)),
-            "attribution_pct": _safe_percent(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100)), 100.0),
-            "baseline_monthly_brl": _safe_float(payload.get("baseline_monthly_brl", 0)),
-            "agent_monthly_cost_brl": _safe_float(payload.get("agent_monthly_cost_brl", 0)),
-            "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0),
-            "require_evidence": bool(payload.get("require_evidence", False)),
-            "human_review_required": bool(payload.get("human_review_required", False)),
-            "responsible_area": payload.get("responsible_area") or payload.get("area"),
-            "assumptions_json": _json_dumps(payload),
+            "task_id": p.get("task_id"),
+            "agent_id": p.get("agent_id"),
+            "workflow_id": p.get("workflow_id"),
+            "dag_id": p.get("dag_id"),
+            "name": p.get("name") or p.get("title") or "Configuração ROI",
+            "description": p.get("description"),
+            "calculation_method": p.get("calculation_method"),
+            "value_event_name": p.get("value_event_name"),
+            "event_unit_value_brl": _safe_float(p.get("event_unit_value_brl")),
+            "expected_events_month": _safe_float(p.get("expected_events_month")),
+            "attribution_pct": _safe_percent(p.get("attribution_pct"), 100.0),
+            "baseline_monthly_brl": _safe_float(p.get("baseline_monthly_brl")),
+            "agent_monthly_cost_brl": _safe_float(p.get("agent_monthly_cost_brl")),
+            "human_review_pct": _safe_percent(p.get("human_review_pct"), 0.0),
+            "require_evidence": bool(p.get("require_evidence")),
+            "human_review_required": bool(p.get("human_review_required")),
+            "responsible_area": p.get("responsible_area"),
+            "assumptions_json": _json_dumps(assumptions),
             "last_simulation_json": _json_dumps(simulation),
             "user_id": user_id,
         },
     )
-    row = rows[0] if rows else None
+    row = _hydrate_configuration(rows[0]) if rows else None
     if row:
         _audit("roi_configuration", row["id"], "CREATE", None, row, user_id, customer_ctx.get("customer_id"))
     return {"ok": True, "item": row, "simulation": simulation}
@@ -231,7 +356,8 @@ def create_roi_configuration(payload: dict, customer_ctx: dict, user_id: str | N
 def get_roi_configuration(config_id: str, project_keys: list[str] | None = None) -> dict | None:
     where, params = _scope_filter_sql("c", project_keys)
     params["id"] = config_id
-    return fetch_one(f"select c.* from roi.roi_configuration c where c.id=%(id)s and {where}", params)
+    row = fetch_one(f"select c.* from roi.roi_configuration c where c.id=%(id)s and {where}", params)
+    return _hydrate_configuration(row)
 
 
 def update_roi_configuration(config_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
@@ -240,12 +366,18 @@ def update_roi_configuration(config_id: str, payload: dict, project_keys: list[s
         return {"ok": False, "error": "not_found"}
     if current.get("status") == "PUBLISHED":
         return {"ok": False, "error": "published_configuration_is_immutable"}
-    merged = {**current, **payload}
-    simulation = simulate_roi(merged)
+
+    assumptions_current = _json_loads_maybe(current.get("assumptions_json"))
+    merged_base = {**assumptions_current, **current}
+    p = _normalize_roi_payload(payload, base=merged_base)
+    assumptions = _assumptions_for_storage(p)
+    simulation = simulate_roi(assumptions)
+
     rows = execute_returning(
         """
         update roi.roi_configuration set
-            name = coalesce(%(name)s, name), description = %(description)s,
+            name = coalesce(%(name)s, name),
+            description = %(description)s,
             calculation_method = coalesce(%(calculation_method)s, calculation_method),
             value_event_name = %(value_event_name)s,
             event_unit_value_brl = %(event_unit_value_brl)s,
@@ -266,25 +398,25 @@ def update_roi_configuration(config_id: str, payload: dict, project_keys: list[s
         """,
         {
             "id": config_id,
-            "name": merged.get("name"),
-            "description": merged.get("description"),
-            "calculation_method": merged.get("calculation_method"),
-            "value_event_name": merged.get("value_event_name"),
-            "event_unit_value_brl": _safe_float(merged.get("event_unit_value_brl")),
-            "expected_events_month": _safe_float(merged.get("expected_events_month")),
-            "attribution_pct": _safe_percent(merged.get("attribution_pct"), 100.0),
-            "baseline_monthly_brl": _safe_float(merged.get("baseline_monthly_brl")),
-            "agent_monthly_cost_brl": _safe_float(merged.get("agent_monthly_cost_brl")),
-            "human_review_pct": _safe_percent(merged.get("human_review_pct"), 0.0),
-            "require_evidence": bool(merged.get("require_evidence")),
-            "human_review_required": bool(merged.get("human_review_required")),
-            "responsible_area": merged.get("responsible_area"),
-            "assumptions_json": _json_dumps(merged),
+            "name": p.get("name"),
+            "description": p.get("description"),
+            "calculation_method": p.get("calculation_method"),
+            "value_event_name": p.get("value_event_name"),
+            "event_unit_value_brl": _safe_float(p.get("event_unit_value_brl")),
+            "expected_events_month": _safe_float(p.get("expected_events_month")),
+            "attribution_pct": _safe_percent(p.get("attribution_pct"), 100.0),
+            "baseline_monthly_brl": _safe_float(p.get("baseline_monthly_brl")),
+            "agent_monthly_cost_brl": _safe_float(p.get("agent_monthly_cost_brl")),
+            "human_review_pct": _safe_percent(p.get("human_review_pct"), 0.0),
+            "require_evidence": bool(p.get("require_evidence")),
+            "human_review_required": bool(p.get("human_review_required")),
+            "responsible_area": p.get("responsible_area"),
+            "assumptions_json": _json_dumps(assumptions),
             "last_simulation_json": _json_dumps(simulation),
             "user_id": user_id,
         },
     )
-    item = rows[0] if rows else None
+    item = _hydrate_configuration(rows[0]) if rows else None
     _audit("roi_configuration", config_id, "UPDATE", current, item, user_id, current.get("customer_id"))
     return {"ok": True, "item": item, "simulation": simulation}
 
@@ -314,7 +446,7 @@ def publish_roi_configuration(config_id: str, project_keys: list[str] | None, us
         """,
         {"id": config_id, "user_id": user_id},
     )
-    item = rows[0] if rows else None
+    item = _hydrate_configuration(rows[0]) if rows else None
     _audit("roi_configuration", config_id, "PUBLISH", current, item, user_id, current.get("customer_id"))
     return {"ok": True, "item": item, "version": version}
 
@@ -324,15 +456,19 @@ def archive_roi_configuration(config_id: str, project_keys: list[str] | None, us
     if not current:
         return {"ok": False, "error": "not_found"}
     rows = execute_returning("update roi.roi_configuration set status='ARCHIVED', updated_at=now(), updated_by=%(user_id)s where id=%(id)s returning *", {"id": config_id, "user_id": user_id})
-    item = rows[0] if rows else None
+    item = _hydrate_configuration(rows[0]) if rows else None
     _audit("roi_configuration", config_id, "ARCHIVE", current, item, user_id, current.get("customer_id"))
     return {"ok": True, "item": item}
 
 
+# -----------------------------------------------------------------------------
+# Tasks / baselines / mappings
+# -----------------------------------------------------------------------------
+
 def list_roi_tasks(project_keys: list[str] | None = None) -> dict:
     where, params = _scope_filter_sql("t", project_keys)
     rows = fetch_all(f"select t.* from roi.roi_task t where {where} order by t.updated_at desc nulls last, t.created_at desc", params) if table_exists("roi", "roi_task") else []
-    return {"items": rows, "total": len(rows)}
+    return {"items": _json_safe(rows), "total": len(rows)}
 
 
 def create_roi_task(payload: dict, customer_ctx: dict, user_id: str | None = None) -> dict:
@@ -350,7 +486,7 @@ def create_roi_task(payload: dict, customer_ctx: dict, user_id: str | None = Non
         """,
         {"customer_id": customer_ctx.get("customer_id"), "project_id": project_id, "code": payload.get("code"), "name": payload.get("name"), "description": payload.get("description"), "area_id": payload.get("area_id"), "process_name": payload.get("process_name"), "owner_id": payload.get("owner_id"), "status": payload.get("status"), "user_id": user_id},
     )
-    item = rows[0] if rows else None
+    item = _json_safe(rows[0]) if rows else None
     _audit("roi_task", item["id"], "CREATE", None, item, user_id, customer_ctx.get("customer_id")) if item else None
     return {"ok": True, "item": item}
 
@@ -369,7 +505,7 @@ def save_task_baseline(task_id: str, payload: dict, project_keys: list[str] | No
         """,
         {"task_id": task_id, "avg_manual_time_min": _safe_float(payload.get("avg_manual_time_min")), "monthly_volume": _safe_float(payload.get("monthly_volume")), "cost_per_hour_brl": _safe_float(payload.get("cost_per_hour_brl", payload.get("cost_per_hour", 0))), "manual_sla_hours": _safe_float(payload.get("manual_sla_hours")), "manual_error_rate": _safe_float(payload.get("manual_error_rate")), "baseline_date": payload.get("baseline_date"), "confidence_level": payload.get("confidence_level") or "MEDIUM", "evidence_required": bool(payload.get("evidence_required", True)), "user_id": user_id},
     )
-    return {"ok": True, "item": rows[0] if rows else None}
+    return {"ok": True, "item": _json_safe(rows[0]) if rows else None}
 
 
 def approve_task_baseline(task_id: str, project_keys: list[str] | None, user_id: str | None = None) -> dict:
@@ -386,7 +522,7 @@ def approve_task_baseline(task_id: str, project_keys: list[str] | None, user_id:
         """,
         {"task_id": task_id, "user_id": user_id},
     )
-    return {"ok": bool(rows), "item": rows[0] if rows else None}
+    return {"ok": bool(rows), "item": _json_safe(rows[0]) if rows else None}
 
 
 def list_roi_mappings(project_keys: list[str] | None = None) -> dict:
@@ -401,7 +537,7 @@ def list_roi_mappings(project_keys: list[str] | None = None) -> dict:
         """,
         params,
     ) if table_exists("roi", "roi_task_mapping") else []
-    return {"items": rows, "total": len(rows)}
+    return {"items": _json_safe(rows), "total": len(rows)}
 
 
 def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
@@ -419,10 +555,14 @@ def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: s
         values(%(task_id)s, %(agent_id)s, %(agent_name)s, %(workflow_id)s, %(dag_id)s, %(coverage_pct)s, %(human_review_pct)s, %(execution_mode)s, %(channel)s, coalesce(%(status)s,'ACTIVE'), coalesce(%(active_from)s::date, current_date), %(user_id)s, %(user_id)s)
         returning *
         """,
-        {"task_id": task_id, "agent_id": payload.get("agent_id"), "agent_name": payload.get("agent_name"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"), "coverage_pct": _safe_float(payload.get("coverage_pct", 100)), "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0), "execution_mode": payload.get("execution_mode"), "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id},
+        {"task_id": task_id, "agent_id": payload.get("agent_id"), "agent_name": payload.get("agent_name"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"), "coverage_pct": _safe_percent(payload.get("coverage_pct", 100), 100.0), "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0), "execution_mode": payload.get("execution_mode"), "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id},
     )
-    return {"ok": True, "item": rows[0] if rows else None}
+    return {"ok": True, "item": _json_safe(rows[0]) if rows else None}
 
+
+# -----------------------------------------------------------------------------
+# Dashboard / results
+# -----------------------------------------------------------------------------
 
 def executive_dashboard(project_keys: list[str] | None = None, days: int = 30) -> dict:
     where, params = _scope_filter_sql("r", project_keys)
@@ -440,7 +580,7 @@ def executive_dashboard(project_keys: list[str] | None = None, days: int = 30) -
         {**params, "days": int(days)},
     ) if table_exists("roi", "roi_calculation_result") else []
     k = rows[0] if rows else {}
-    return {"kpis": k, "days": days}
+    return _json_safe({"kpis": k, "days": days})
 
 
 def task_result(task_id: str, project_keys: list[str] | None = None) -> dict:
@@ -452,13 +592,16 @@ def task_result(task_id: str, project_keys: list[str] | None = None) -> dict:
     baseline = fetch_one("select * from roi.roi_task_baseline where task_id=%(task_id)s order by created_at desc limit 1", {"task_id": task_id})
     mappings = fetch_all("select * from roi.roi_task_mapping where task_id=%(task_id)s order by created_at desc", {"task_id": task_id})
     results = fetch_all("select * from roi.roi_calculation_result where task_id=%(task_id)s order by period_start desc limit 24", {"task_id": task_id})
-    return {"ok": True, "task": task, "baseline": baseline, "mappings": mappings, "results": results}
+    return _json_safe({"ok": True, "task": task, "baseline": baseline, "mappings": mappings, "results": results})
 
+
+# -----------------------------------------------------------------------------
+# Audit
+# -----------------------------------------------------------------------------
 
 def _audit(entity_type: str, entity_id: str, event_type: str, before: Any, after: Any, user_id: str | None, customer_id: str | None) -> None:
     if not table_exists("roi", "roi_audit_event"):
         return
-    import json
     try:
         execute(
             """
