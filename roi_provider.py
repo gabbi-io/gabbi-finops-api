@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, date
+from decimal import Decimal
 from typing import Any
+import json
 
 from db import fetch_all, fetch_one, execute, execute_returning, table_exists
 
@@ -18,6 +20,37 @@ def _safe_int(v: Any, default: int = 0) -> int:
         return int(v or 0)
     except Exception:
         return default
+
+
+
+def _json_safe(obj: Any):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, tuple):
+        return [_json_safe(x) for x in obj]
+    if isinstance(obj, list):
+        return [_json_safe(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    return obj
+
+
+def _json_dumps(obj: Any) -> str:
+    return json.dumps(_json_safe(obj), ensure_ascii=False)
+
+
+def _safe_percent(v: Any, default: float = 0.0) -> float:
+    """Normaliza percentuais.
+
+    Aceita 80, 80.0 e também 8000 vindo de máscara de percentual do front (80,00%).
+    Sempre retorna 0..100.
+    """
+    n = _safe_float(v, default)
+    if n > 100 and n <= 10000:
+        n = n / 100.0
+    return max(0.0, min(100.0, n))
 
 
 def _now_iso() -> str:
@@ -57,18 +90,18 @@ def simulate_roi(payload: dict) -> dict:
     }
     method = method_aliases.get(normalized, normalized)
 
-    attribution_pct = _safe_float(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100)), 100.0)
-    attribution_factor = max(0.0, min(100.0, attribution_pct)) / 100.0
+    attribution_pct = _safe_percent(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100)), 100.0)
+    attribution_factor = attribution_pct / 100.0
 
     agent_monthly_cost = _safe_float(payload.get("agent_monthly_cost_brl", payload.get("monthly_ai_cost_brl", 0)))
     implementation_cost = _safe_float(payload.get("implementation_cost_brl", payload.get("setup_cost_brl", 0)))
-    human_review_pct = _safe_float(payload.get("human_review_pct", 0))
-    human_review_factor = max(0.0, min(100.0, human_review_pct)) / 100.0
+    human_review_pct = _safe_percent(payload.get("human_review_pct", 0), 0.0)
+    human_review_factor = human_review_pct / 100.0
 
     avg_manual_time_min = _safe_float(payload.get("avg_manual_time_min", payload.get("saved_time_min", 0)))
     monthly_volume = _safe_float(payload.get("monthly_volume", payload.get("expected_events_month", 0)))
     cost_per_hour = _safe_float(payload.get("cost_per_hour_brl", payload.get("hourly_cost_brl", payload.get("cost_per_hour", 0))))
-    coverage_pct = _safe_float(payload.get("coverage_pct", payload.get("automation_pct", 100))) / 100.0
+    coverage_pct = _safe_percent(payload.get("coverage_pct", payload.get("automation_pct", 100)), 100.0) / 100.0
 
     unit_value = _safe_float(payload.get("event_unit_value_brl", payload.get("unit_value_brl", 0)))
     events_month = _safe_float(payload.get("expected_events_month", payload.get("monthly_volume", 0)))
@@ -177,15 +210,15 @@ def create_roi_configuration(payload: dict, customer_ctx: dict, user_id: str | N
             "value_event_name": payload.get("value_event_name") or payload.get("event_name"),
             "event_unit_value_brl": _safe_float(payload.get("event_unit_value_brl", payload.get("unit_value_brl", 0))),
             "expected_events_month": _safe_float(payload.get("expected_events_month", 0)),
-            "attribution_pct": _safe_float(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100))),
+            "attribution_pct": _safe_percent(payload.get("attribution_pct", payload.get("gabbi_attribution_pct", 100)), 100.0),
             "baseline_monthly_brl": _safe_float(payload.get("baseline_monthly_brl", 0)),
             "agent_monthly_cost_brl": _safe_float(payload.get("agent_monthly_cost_brl", 0)),
-            "human_review_pct": _safe_float(payload.get("human_review_pct", 0)),
+            "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0),
             "require_evidence": bool(payload.get("require_evidence", False)),
             "human_review_required": bool(payload.get("human_review_required", False)),
             "responsible_area": payload.get("responsible_area") or payload.get("area"),
-            "assumptions_json": __import__("json").dumps(payload, ensure_ascii=False),
-            "last_simulation_json": __import__("json").dumps(simulation, ensure_ascii=False),
+            "assumptions_json": _json_dumps(payload),
+            "last_simulation_json": _json_dumps(simulation),
             "user_id": user_id,
         },
     )
@@ -239,15 +272,15 @@ def update_roi_configuration(config_id: str, payload: dict, project_keys: list[s
             "value_event_name": merged.get("value_event_name"),
             "event_unit_value_brl": _safe_float(merged.get("event_unit_value_brl")),
             "expected_events_month": _safe_float(merged.get("expected_events_month")),
-            "attribution_pct": _safe_float(merged.get("attribution_pct")),
+            "attribution_pct": _safe_percent(merged.get("attribution_pct"), 100.0),
             "baseline_monthly_brl": _safe_float(merged.get("baseline_monthly_brl")),
             "agent_monthly_cost_brl": _safe_float(merged.get("agent_monthly_cost_brl")),
-            "human_review_pct": _safe_float(merged.get("human_review_pct")),
+            "human_review_pct": _safe_percent(merged.get("human_review_pct"), 0.0),
             "require_evidence": bool(merged.get("require_evidence")),
             "human_review_required": bool(merged.get("human_review_required")),
             "responsible_area": merged.get("responsible_area"),
-            "assumptions_json": __import__("json").dumps(merged, default=str, ensure_ascii=False),
-            "last_simulation_json": __import__("json").dumps(simulation, ensure_ascii=False),
+            "assumptions_json": _json_dumps(merged),
+            "last_simulation_json": _json_dumps(simulation),
             "user_id": user_id,
         },
     )
@@ -264,7 +297,7 @@ def publish_roi_configuration(config_id: str, project_keys: list[str] | None, us
         return {"ok": False, "error": "simulation_required"}
     version_row = fetch_one("select coalesce(max(version),0)+1 as version from roi.roi_configuration_version where configuration_id=%(id)s", {"id": config_id}) or {"version": 1}
     version = int(version_row["version"])
-    snapshot = __import__("json").dumps(current, default=str, ensure_ascii=False)
+    snapshot = _json_dumps(current)
     execute(
         """
         insert into roi.roi_configuration_version(configuration_id, version, status, snapshot_json, published_by)
@@ -386,7 +419,7 @@ def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: s
         values(%(task_id)s, %(agent_id)s, %(agent_name)s, %(workflow_id)s, %(dag_id)s, %(coverage_pct)s, %(human_review_pct)s, %(execution_mode)s, %(channel)s, coalesce(%(status)s,'ACTIVE'), coalesce(%(active_from)s::date, current_date), %(user_id)s, %(user_id)s)
         returning *
         """,
-        {"task_id": task_id, "agent_id": payload.get("agent_id"), "agent_name": payload.get("agent_name"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"), "coverage_pct": _safe_float(payload.get("coverage_pct", 100)), "human_review_pct": _safe_float(payload.get("human_review_pct", 0)), "execution_mode": payload.get("execution_mode"), "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id},
+        {"task_id": task_id, "agent_id": payload.get("agent_id"), "agent_name": payload.get("agent_name"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"), "coverage_pct": _safe_float(payload.get("coverage_pct", 100)), "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0), "execution_mode": payload.get("execution_mode"), "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id},
     )
     return {"ok": True, "item": rows[0] if rows else None}
 
@@ -432,7 +465,7 @@ def _audit(entity_type: str, entity_id: str, event_type: str, before: Any, after
             insert into roi.roi_audit_event(event_type, entity_type, entity_id, user_id, customer_id, before_json, after_json)
             values(%(event_type)s, %(entity_type)s, %(entity_id)s, %(user_id)s, %(customer_id)s, %(before_json)s::jsonb, %(after_json)s::jsonb)
             """,
-            {"event_type": event_type, "entity_type": entity_type, "entity_id": entity_id, "user_id": user_id, "customer_id": customer_id, "before_json": json.dumps(before, default=str, ensure_ascii=False) if before is not None else None, "after_json": json.dumps(after, default=str, ensure_ascii=False) if after is not None else None},
+            {"event_type": event_type, "entity_type": entity_type, "entity_id": entity_id, "user_id": user_id, "customer_id": customer_id, "before_json": _json_dumps(before) if before is not None else None, "after_json": _json_dumps(after) if after is not None else None},
         )
     except Exception as e:
         print(f"[ROI][WARN] audit failed: {e}")
