@@ -16,9 +16,11 @@ from real_provider import summarize_real, upsert_pricing, ingest_usage, get_fino
 from roi_provider import (
     simulate_roi, list_roi_configurations, create_roi_configuration,
     get_roi_configuration, update_roi_configuration, publish_roi_configuration,
-    archive_roi_configuration, list_roi_tasks, create_roi_task,
-    save_task_baseline, approve_task_baseline, list_roi_mappings,
-    create_roi_mapping, executive_dashboard, task_result,
+    archive_roi_configuration, list_roi_tasks, create_roi_task, update_roi_task, archive_roi_task,
+    save_task_baseline, approve_task_baseline, reject_task_baseline, archive_task_baseline,
+    list_roi_evidences, create_roi_evidence,
+    list_task_framework_links, create_task_framework_link, deactivate_task_framework_link,
+    list_roi_mappings, create_roi_mapping, executive_dashboard, task_result,
 )
 from db import fetch_one, fetch_all
 
@@ -655,8 +657,15 @@ def _openapi_spec() -> dict:
                 "get": {"tags": ["08. ROI Tarefas"], "summary": "Listar tarefas de ROI", "description": "Lista tarefas de negócio medidas por ROI no escopo do cliente.", "parameters": header_params, "responses": json_response("#/components/schemas/RoiTaskList", "Tarefas listadas")},
                 "post": {"tags": ["08. ROI Tarefas"], "summary": "Criar tarefa de ROI", "description": "Cria tarefa de negócio com área, processo e owner.", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiTaskRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Tarefa criada")},
             },
-            "/api/roi/tasks/{id}/baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Salvar baseline da tarefa", "description": "Registra tempo manual, volume mensal, custo/hora, SLA, erro e confiança.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiBaselineRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline salvo")}},
+            "/api/roi/tasks/{id}": {"patch": {"tags": ["08. ROI Tarefas"], "summary": "Atualizar tarefa de ROI", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiTaskRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Tarefa atualizada")}},
+            "/api/roi/tasks/{id}/archive": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Arquivar tarefa de ROI", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Tarefa arquivada")}},
+            "/api/roi/tasks/{id}/baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Salvar baseline da tarefa", "description": "Registra tempo manual, volume mensal, custo/hora, SLA, erro, confiança e status do baseline.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": True, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoiBaselineRequest"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline salvo")}},
             "/api/roi/tasks/{id}/approve-baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Aprovar baseline da tarefa", "description": "Marca o baseline mais recente como aprovado para cálculo oficial.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline aprovado")}},
+            "/api/roi/tasks/{id}/reject-baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Rejeitar baseline da tarefa", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline rejeitado")}},
+            "/api/roi/tasks/{id}/archive-baseline": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Arquivar baseline da tarefa", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Baseline arquivado")}},
+            "/api/roi/tasks/{id}/frameworks": {"get": {"tags": ["08. ROI Tarefas"], "summary": "Listar frameworks vinculados à tarefa", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMappingList", "Vínculos listados")}, "post": {"tags": ["08. ROI Tarefas"], "summary": "Vincular tarefa a framework publicado", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Framework vinculado")}},
+            "/api/roi/task-frameworks/{id}/deactivate": {"post": {"tags": ["08. ROI Tarefas"], "summary": "Encerrar vínculo tarefa-framework", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMutationResponse", "Vínculo encerrado")}},
+            "/api/roi/evidences": {"get": {"tags": ["08. ROI Tarefas"], "summary": "Listar evidências de ROI", "parameters": header_params + [{"name": "entity_type", "in": "query", "schema": {"type": "string"}}, {"name": "entity_id", "in": "query", "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiMappingList", "Evidências listadas")}, "post": {"tags": ["08. ROI Tarefas"], "summary": "Cadastrar evidência de ROI", "parameters": header_params, "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object"}}}}, "responses": json_response("#/components/schemas/RoiMutationResponse", "Evidência criada")}},
             "/api/roi/tasks/{id}/results": {"get": {"tags": ["08. ROI Tarefas"], "summary": "Resultado de ROI por tarefa", "description": "Retorna tarefa, baseline, mapeamentos e resultados históricos.", "parameters": header_params + [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": json_response("#/components/schemas/RoiTaskResult", "Resultado retornado")}},
 
             "/api/roi/mappings": {
@@ -1150,13 +1159,32 @@ def api_roi_configuration_archive(config_id: str):
 
 @app.route("/api/roi/tasks", methods=["GET"])
 def api_roi_tasks_list():
-    return safe_jsonify(list_roi_tasks(project_keys=_effective_project_keys()))
+    return safe_jsonify(list_roi_tasks(
+        project_keys=_effective_project_keys(),
+        area_id=request.args.get("area_id") or None,
+        owner_id=request.args.get("owner_id") or None,
+        status=request.args.get("status") or None,
+        framework_id=request.args.get("framework_id") or None,
+    ))
 
 
 @app.route("/api/roi/tasks", methods=["POST"])
 def api_roi_tasks_create():
     payload = request.get_json(silent=True) or {}
     out = create_roi_task(payload, _customer_context_from_request(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>", methods=["PATCH"])
+def api_roi_tasks_update(task_id: str):
+    payload = request.get_json(silent=True) or {}
+    out = update_roi_task(task_id, payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/archive", methods=["POST"])
+def api_roi_tasks_archive(task_id: str):
+    out = archive_roi_task(task_id, project_keys=_effective_project_keys(), user_id=_current_user_id())
     return safe_jsonify(out, 200 if out.get("ok") else 400)
 
 
@@ -1170,6 +1198,54 @@ def api_roi_task_baseline(task_id: str):
 @app.route("/api/roi/tasks/<task_id>/approve-baseline", methods=["POST"])
 def api_roi_task_approve_baseline(task_id: str):
     out = approve_task_baseline(task_id, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/reject-baseline", methods=["POST"])
+def api_roi_task_reject_baseline(task_id: str):
+    payload = request.get_json(silent=True) or {}
+    out = reject_task_baseline(task_id, payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/archive-baseline", methods=["POST"])
+def api_roi_task_archive_baseline(task_id: str):
+    out = archive_task_baseline(task_id, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/frameworks", methods=["GET"])
+def api_roi_task_frameworks_list(task_id: str):
+    return safe_jsonify(list_task_framework_links(task_id, project_keys=_effective_project_keys()))
+
+
+@app.route("/api/roi/tasks/<task_id>/frameworks", methods=["POST"])
+def api_roi_task_frameworks_create(task_id: str):
+    payload = request.get_json(silent=True) or {}
+    out = create_task_framework_link(task_id, payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/task-frameworks/<link_id>/deactivate", methods=["POST"])
+def api_roi_task_frameworks_deactivate(link_id: str):
+    payload = request.get_json(silent=True) or {}
+    out = deactivate_task_framework_link(link_id, payload, project_keys=_effective_project_keys(), user_id=_current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/evidences", methods=["GET"])
+def api_roi_evidences_list():
+    return safe_jsonify(list_roi_evidences(
+        project_keys=_effective_project_keys(),
+        entity_type=request.args.get("entity_type") or None,
+        entity_id=request.args.get("entity_id") or None,
+    ))
+
+
+@app.route("/api/roi/evidences", methods=["POST"])
+def api_roi_evidences_create():
+    payload = request.get_json(silent=True) or {}
+    out = create_roi_evidence(payload, _customer_context_from_request(), user_id=_current_user_id())
     return safe_jsonify(out, 200 if out.get("ok") else 400)
 
 

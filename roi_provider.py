@@ -465,9 +465,76 @@ def archive_roi_configuration(config_id: str, project_keys: list[str] | None, us
 # Tasks / baselines / mappings
 # -----------------------------------------------------------------------------
 
-def list_roi_tasks(project_keys: list[str] | None = None) -> dict:
+
+def _task_exists(task_id: str, project_keys: list[str] | None = None) -> dict | None:
     where, params = _scope_filter_sql("t", project_keys)
-    rows = fetch_all(f"select t.* from roi.roi_task t where {where} order by t.updated_at desc nulls last, t.created_at desc", params) if table_exists("roi", "roi_task") else []
+    params["id"] = task_id
+    return fetch_one(f"select * from roi.roi_task t where t.id=%(id)s and {where}", params)
+
+
+def _baseline_status_sql_expr() -> str:
+    """Keeps compatibility with older schema that only had approved boolean."""
+    return "coalesce(b.baseline_status, case when b.approved then 'APPROVED' else 'DRAFT' end)" if _column_exists_roi("roi_task_baseline", "baseline_status") else "case when b.approved then 'APPROVED' else 'DRAFT' end"
+
+
+def _column_exists_roi(table: str, column: str) -> bool:
+    row = fetch_one(
+        """
+        select 1
+        from information_schema.columns
+        where table_schema='roi' and table_name=%(table)s and column_name=%(column)s
+        limit 1
+        """,
+        {"table": table, "column": column},
+    )
+    return bool(row)
+
+
+def list_roi_tasks(
+    project_keys: list[str] | None = None,
+    area_id: str | None = None,
+    owner_id: str | None = None,
+    status: str | None = None,
+    framework_id: str | None = None,
+) -> dict:
+    where, params = _scope_filter_sql("t", project_keys)
+    if area_id:
+        where += " and t.area_id = %(area_id)s"
+        params["area_id"] = area_id
+    if owner_id:
+        where += " and t.owner_id = %(owner_id)s"
+        params["owner_id"] = owner_id
+    if status:
+        where += " and t.status = %(status)s"
+        params["status"] = status
+    join_framework = ""
+    if framework_id:
+        join_framework = " join roi.roi_task_framework tf on tf.task_id=t.id and tf.framework_id=%(framework_id)s and tf.active_to is null"
+        params["framework_id"] = framework_id
+
+    rows = fetch_all(
+        f"""
+        select t.*,
+               b.id as latest_baseline_id,
+               b.avg_manual_time_min,
+               b.monthly_volume,
+               b.cost_per_hour_brl,
+               b.confidence_level,
+               { _baseline_status_sql_expr() } as baseline_status,
+               b.approved as baseline_approved
+        from roi.roi_task t
+        {join_framework}
+        left join lateral (
+            select * from roi.roi_task_baseline b
+            where b.task_id=t.id
+            order by b.created_at desc
+            limit 1
+        ) b on true
+        where {where}
+        order by t.updated_at desc nulls last, t.created_at desc
+        """,
+        params,
+    ) if table_exists("roi", "roi_task") else []
     return {"items": _json_safe(rows), "total": len(rows)}
 
 
@@ -491,38 +558,287 @@ def create_roi_task(payload: dict, customer_ctx: dict, user_id: str | None = Non
     return {"ok": True, "item": item}
 
 
-def save_task_baseline(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
-    where, params = _scope_filter_sql("t", project_keys)
-    params["id"] = task_id
-    task = fetch_one(f"select * from roi.roi_task t where t.id=%(id)s and {where}", params)
-    if not task:
+def update_roi_task(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    current = _task_exists(task_id, project_keys)
+    if not current:
         return {"ok": False, "error": "task_not_found"}
     rows = execute_returning(
         """
-        insert into roi.roi_task_baseline(task_id, avg_manual_time_min, monthly_volume, cost_per_hour_brl, manual_sla_hours, manual_error_rate, baseline_date, confidence_level, evidence_required, approved, created_by)
-        values(%(task_id)s, %(avg_manual_time_min)s, %(monthly_volume)s, %(cost_per_hour_brl)s, %(manual_sla_hours)s, %(manual_error_rate)s, coalesce(%(baseline_date)s, current_date), %(confidence_level)s, %(evidence_required)s, false, %(user_id)s)
+        update roi.roi_task set
+            code = coalesce(%(code)s, code),
+            name = coalesce(%(name)s, name),
+            description = %(description)s,
+            area_id = %(area_id)s,
+            process_name = %(process_name)s,
+            owner_id = %(owner_id)s,
+            status = coalesce(%(status)s, status),
+            updated_by = %(user_id)s,
+            updated_at = now()
+        where id=%(id)s
         returning *
         """,
-        {"task_id": task_id, "avg_manual_time_min": _safe_float(payload.get("avg_manual_time_min")), "monthly_volume": _safe_float(payload.get("monthly_volume")), "cost_per_hour_brl": _safe_float(payload.get("cost_per_hour_brl", payload.get("cost_per_hour", 0))), "manual_sla_hours": _safe_float(payload.get("manual_sla_hours")), "manual_error_rate": _safe_float(payload.get("manual_error_rate")), "baseline_date": payload.get("baseline_date"), "confidence_level": payload.get("confidence_level") or "MEDIUM", "evidence_required": bool(payload.get("evidence_required", True)), "user_id": user_id},
+        {
+            "id": task_id,
+            "code": payload.get("code"),
+            "name": payload.get("name"),
+            "description": payload.get("description"),
+            "area_id": payload.get("area_id"),
+            "process_name": payload.get("process_name"),
+            "owner_id": payload.get("owner_id"),
+            "status": payload.get("status"),
+            "user_id": user_id,
+        },
     )
-    return {"ok": True, "item": _json_safe(rows[0]) if rows else None}
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task", task_id, "UPDATE", current, item, user_id, current.get("customer_id"))
+    return {"ok": True, "item": item}
+
+
+def archive_roi_task(task_id: str, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    current = _task_exists(task_id, project_keys)
+    if not current:
+        return {"ok": False, "error": "task_not_found"}
+    rows = execute_returning(
+        """
+        update roi.roi_task
+           set status='ARCHIVED', updated_by=%(user_id)s, updated_at=now()
+         where id=%(id)s
+         returning *
+        """,
+        {"id": task_id, "user_id": user_id},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task", task_id, "ARCHIVE", current, item, user_id, current.get("customer_id"))
+    return {"ok": True, "item": item}
+
+
+def save_task_baseline(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    status = str(payload.get("baseline_status") or payload.get("status") or "DRAFT").upper()
+    if status not in {"DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "ARCHIVED"}:
+        status = "DRAFT"
+    approved = status == "APPROVED" or bool(payload.get("approved") or False)
+    rows = execute_returning(
+        """
+        insert into roi.roi_task_baseline(
+            task_id, avg_manual_time_min, monthly_volume, cost_per_hour_brl,
+            manual_sla_hours, manual_error_rate, baseline_date, confidence_level,
+            evidence_required, approved, baseline_status, created_by
+        ) values(
+            %(task_id)s, %(avg_manual_time_min)s, %(monthly_volume)s, %(cost_per_hour_brl)s,
+            %(manual_sla_hours)s, %(manual_error_rate)s, coalesce(%(baseline_date)s, current_date), %(confidence_level)s,
+            %(evidence_required)s, %(approved)s, %(baseline_status)s, %(user_id)s
+        )
+        returning *
+        """,
+        {"task_id": task_id, "avg_manual_time_min": _safe_float(payload.get("avg_manual_time_min")), "monthly_volume": _safe_float(payload.get("monthly_volume")), "cost_per_hour_brl": _safe_float(payload.get("cost_per_hour_brl", payload.get("cost_per_hour", 0))), "manual_sla_hours": _safe_float(payload.get("manual_sla_hours")), "manual_error_rate": _safe_float(payload.get("manual_error_rate")), "baseline_date": payload.get("baseline_date"), "confidence_level": payload.get("confidence_level") or "MEDIUM", "evidence_required": bool(payload.get("evidence_required", True)), "approved": approved, "baseline_status": status, "user_id": user_id},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task_baseline", item["id"], "CREATE", None, item, user_id, task.get("customer_id")) if item else None
+    return {"ok": True, "item": item}
+
+
+def _latest_baseline(task_id: str) -> dict | None:
+    return fetch_one("select * from roi.roi_task_baseline where task_id=%(task_id)s order by created_at desc limit 1", {"task_id": task_id})
 
 
 def approve_task_baseline(task_id: str, project_keys: list[str] | None, user_id: str | None = None) -> dict:
-    where, params = _scope_filter_sql("t", project_keys)
-    params["id"] = task_id
-    task = fetch_one(f"select * from roi.roi_task t where t.id=%(id)s and {where}", params)
+    task = _task_exists(task_id, project_keys)
     if not task:
         return {"ok": False, "error": "task_not_found"}
+    baseline = _latest_baseline(task_id)
+    if not baseline:
+        return {"ok": False, "error": "baseline_not_found"}
+    if bool(baseline.get("evidence_required")):
+        ev = fetch_one("select 1 from roi.roi_evidence where entity_type='ROI_TASK_BASELINE' and entity_id=%(id)s limit 1", {"id": baseline["id"]})
+        if not ev:
+            return {"ok": False, "error": "evidence_required"}
     rows = execute_returning(
         """
-        update roi.roi_task_baseline set approved=true, approved_by=%(user_id)s, approved_at=now()
-        where id = (select id from roi.roi_task_baseline where task_id=%(task_id)s order by created_at desc limit 1)
+        update roi.roi_task_baseline
+           set approved=true, baseline_status='APPROVED', approved_by=%(user_id)s, approved_at=now()
+         where id=%(baseline_id)s
+         returning *
+        """,
+        {"baseline_id": baseline["id"], "user_id": user_id},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task_baseline", baseline["id"], "APPROVE", baseline, item, user_id, task.get("customer_id"))
+    return {"ok": bool(rows), "item": item}
+
+
+def reject_task_baseline(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    baseline = _latest_baseline(task_id)
+    if not baseline:
+        return {"ok": False, "error": "baseline_not_found"}
+    rows = execute_returning(
+        """
+        update roi.roi_task_baseline
+           set approved=false, baseline_status='REJECTED', rejected_by=%(user_id)s, rejected_at=now(), rejection_reason=%(reason)s
+         where id=%(baseline_id)s
+         returning *
+        """,
+        {"baseline_id": baseline["id"], "user_id": user_id, "reason": payload.get("reason") or payload.get("rejection_reason")},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task_baseline", baseline["id"], "REJECT", baseline, item, user_id, task.get("customer_id"))
+    return {"ok": bool(rows), "item": item}
+
+
+def archive_task_baseline(task_id: str, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    baseline = _latest_baseline(task_id)
+    if not baseline:
+        return {"ok": False, "error": "baseline_not_found"}
+    rows = execute_returning(
+        """
+        update roi.roi_task_baseline
+           set approved=false, baseline_status='ARCHIVED'
+         where id=%(baseline_id)s
+         returning *
+        """,
+        {"baseline_id": baseline["id"]},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task_baseline", baseline["id"], "ARCHIVE", baseline, item, user_id, task.get("customer_id"))
+    return {"ok": bool(rows), "item": item}
+
+
+def list_task_framework_links(task_id: str, project_keys: list[str] | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found", "items": [], "total": 0}
+    rows = fetch_all(
+        """
+        select tf.*, c.name as framework_name, c.status as framework_status
+          from roi.roi_task_framework tf
+          left join roi.roi_configuration c on c.id=tf.framework_id
+         where tf.task_id=%(task_id)s
+         order by tf.active_from desc, tf.created_at desc
+        """,
+        {"task_id": task_id},
+    ) if table_exists("roi", "roi_task_framework") else []
+    return {"ok": True, "items": _json_safe(rows), "total": len(rows)}
+
+
+def create_task_framework_link(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    framework_id = payload.get("framework_id") or payload.get("configuration_id")
+    if not framework_id:
+        return {"ok": False, "error": "missing_framework_id"}
+    framework = fetch_one("select * from roi.roi_configuration where id=%(id)s and status='PUBLISHED'", {"id": framework_id})
+    if not framework:
+        return {"ok": False, "error": "published_framework_required"}
+    version = payload.get("framework_version")
+    if version is None:
+        vr = fetch_one("select max(version) as version from roi.roi_configuration_version where configuration_id=%(id)s", {"id": framework_id}) or {"version": None}
+        version = vr.get("version")
+    if version is None:
+        return {"ok": False, "error": "published_framework_version_required"}
+    rows = execute_returning(
+        """
+        insert into roi.roi_task_framework(task_id, framework_id, framework_version, active_from, active_to, created_by)
+        values(%(task_id)s, %(framework_id)s, %(framework_version)s, coalesce(%(active_from)s::date, current_date), %(active_to)s::date, %(user_id)s)
         returning *
         """,
-        {"task_id": task_id, "user_id": user_id},
+        {"task_id": task_id, "framework_id": framework_id, "framework_version": int(version), "active_from": payload.get("active_from"), "active_to": payload.get("active_to"), "user_id": user_id},
     )
-    return {"ok": bool(rows), "item": _json_safe(rows[0]) if rows else None}
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task_framework", item["id"], "CREATE", None, item, user_id, task.get("customer_id")) if item else None
+    return {"ok": True, "item": item}
+
+
+def deactivate_task_framework_link(link_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    link = fetch_one(
+        """
+        select tf.*, t.customer_id, t.project_id
+          from roi.roi_task_framework tf
+          join roi.roi_task t on t.id=tf.task_id
+         where tf.id=%(id)s
+        """,
+        {"id": link_id},
+    )
+    if not link:
+        return {"ok": False, "error": "task_framework_not_found"}
+    if project_keys is not None and link.get("project_id") not in project_keys:
+        return {"ok": False, "error": "task_framework_not_found"}
+    rows = execute_returning(
+        """
+        update roi.roi_task_framework
+           set active_to = coalesce(%(active_to)s::date, current_date), deactivated_by=%(user_id)s, deactivated_at=now()
+         where id=%(id)s
+         returning *
+        """,
+        {"id": link_id, "active_to": payload.get("active_to"), "user_id": user_id},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_task_framework", link_id, "DEACTIVATE", link, item, user_id, link.get("customer_id"))
+    return {"ok": True, "item": item}
+
+
+def list_roi_evidences(project_keys: list[str] | None = None, entity_type: str | None = None, entity_id: str | None = None) -> dict:
+    if not table_exists("roi", "roi_evidence"):
+        return {"items": [], "total": 0}
+    params: dict[str, Any] = {}
+    clauses = ["1=1"]
+    if entity_type:
+        clauses.append("e.entity_type=%(entity_type)s")
+        params["entity_type"] = entity_type
+    if entity_id:
+        clauses.append("e.entity_id=%(entity_id)s")
+        params["entity_id"] = entity_id
+    # Quando for evidência de tarefa/baseline, garante escopo por projeto.
+    join_sql = ""
+    if project_keys is not None:
+        params["project_keys"] = project_keys
+        if len(project_keys) == 0:
+            clauses.append("1=0")
+        else:
+            join_sql = """
+            left join roi.roi_task t on (
+                (e.entity_type='ROI_TASK' and e.entity_id=t.id)
+                or (e.entity_type='ROI_TASK_BASELINE' and exists (select 1 from roi.roi_task_baseline b where b.id=e.entity_id and b.task_id=t.id))
+            )
+            """
+            clauses.append("(t.project_id = any(%(project_keys)s) or e.entity_type not in ('ROI_TASK','ROI_TASK_BASELINE'))")
+    rows = fetch_all(
+        f"""
+        select e.*
+          from roi.roi_evidence e
+          {join_sql}
+         where {' and '.join(clauses)}
+         order by e.created_at desc
+        """,
+        params,
+    )
+    return {"items": _json_safe(rows), "total": len(rows)}
+
+
+def create_roi_evidence(payload: dict, customer_ctx: dict, user_id: str | None = None) -> dict:
+    entity_type = payload.get("entity_type")
+    entity_id = payload.get("entity_id")
+    if not entity_type or not entity_id:
+        return {"ok": False, "error": "missing_entity_type_or_entity_id"}
+    rows = execute_returning(
+        """
+        insert into roi.roi_evidence(customer_id, entity_type, entity_id, file_url, source_url, source_type, description, pii_masked, uploaded_by)
+        values(%(customer_id)s, %(entity_type)s, %(entity_id)s, %(file_url)s, %(source_url)s, %(source_type)s, %(description)s, coalesce(%(pii_masked)s,true), %(user_id)s)
+        returning *
+        """,
+        {"customer_id": customer_ctx.get("customer_id"), "entity_type": entity_type, "entity_id": entity_id, "file_url": payload.get("file_url"), "source_url": payload.get("source_url"), "source_type": payload.get("source_type"), "description": payload.get("description"), "pii_masked": payload.get("pii_masked"), "user_id": user_id},
+    )
+    item = _json_safe(rows[0]) if rows else None
+    _audit("roi_evidence", item["id"], "CREATE", None, item, user_id, customer_ctx.get("customer_id")) if item else None
+    return {"ok": True, "item": item}
 
 
 def list_roi_mappings(project_keys: list[str] | None = None) -> dict:
@@ -544,9 +860,7 @@ def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: s
     task_id = payload.get("task_id")
     if not task_id:
         return {"ok": False, "error": "missing_task_id"}
-    where, params = _scope_filter_sql("t", project_keys)
-    params["id"] = task_id
-    task = fetch_one(f"select * from roi.roi_task t where t.id=%(id)s and {where}", params)
+    task = _task_exists(task_id, project_keys)
     if not task:
         return {"ok": False, "error": "task_not_found"}
     rows = execute_returning(
@@ -558,7 +872,6 @@ def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: s
         {"task_id": task_id, "agent_id": payload.get("agent_id"), "agent_name": payload.get("agent_name"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"), "coverage_pct": _safe_percent(payload.get("coverage_pct", 100), 100.0), "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0), "execution_mode": payload.get("execution_mode"), "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id},
     )
     return {"ok": True, "item": _json_safe(rows[0]) if rows else None}
-
 
 # -----------------------------------------------------------------------------
 # Dashboard / results
