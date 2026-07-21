@@ -13,7 +13,7 @@ def _dsn() -> str:
     port = os.getenv("DB_PORT", "5432")
     name = os.getenv("DB_NAME", "gabbi-io")
     user = os.getenv("DB_USER", "gabbi_io")
-    pwd = os.getenv("DB_PASSWORD")
+    pwd = os.getenv("DB_PASSWORD", "lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^"),
     if not pwd:
         raise RuntimeError("DB_PASSWORD não configurada no ambiente")
     return f"host={host} port={port} dbname={name} user={user} password={pwd}"
