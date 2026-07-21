@@ -775,11 +775,11 @@ def swagger_docs():
 
 def get_connection():
     return psycopg2.connect(
-        host=os.getenv("DB_HOST", "192.168.230.108"),
-        port=os.getenv("DB_PORT", "5432"),
-        database=os.getenv("DB_NAME", "gabbi-io"),
-        user=os.getenv("DB_USER", "gabbi_io"),
-        password="lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^",
+        host= '192.168.230.108',
+        port= '5432',
+        database='gabbi-io',
+        user= 'gabbi_io',
+        password='lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^'
     )
 
 def _state():

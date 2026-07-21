@@ -9,11 +9,11 @@ import psycopg2.extras
 
 
 def _dsn() -> str:
-    host = os.getenv("DB_HOST", "192.168.230.108")
-    port = os.getenv("DB_PORT", "5432")
-    name = os.getenv("DB_NAME", "gabbi-io")
-    user = os.getenv("DB_USER", "gabbi_io")
-    pwd = "lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^",
+    host = '192.168.230.108'
+    port =  '5432'
+    name = 'gabbi-io'
+    user =  'gabbi_io'
+    pwd = 'lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^'
     if not pwd:
         raise RuntimeError("DB_PASSWORD não configurada no ambiente")
     return f"host={host} port={port} dbname={name} user={user} password={pwd}"
