@@ -465,7 +465,6 @@ def archive_roi_configuration(config_id: str, project_keys: list[str] | None, us
 # Tasks / baselines / mappings
 # -----------------------------------------------------------------------------
 
-
 def _task_exists(task_id: str, project_keys: list[str] | None = None) -> dict | None:
     where, params = _scope_filter_sql("t", project_keys)
     params["id"] = task_id
@@ -473,8 +472,12 @@ def _task_exists(task_id: str, project_keys: list[str] | None = None) -> dict | 
 
 
 def _baseline_status_sql_expr() -> str:
-    """Keeps compatibility with older schema that only had approved boolean."""
-    return "coalesce(b.baseline_status, case when b.approved then 'APPROVED' else 'DRAFT' end)" if _column_exists_roi("roi_task_baseline", "baseline_status") else "case when b.approved then 'APPROVED' else 'DRAFT' end"
+    """Mantém compatibilidade com schema antigo que possuía apenas approved."""
+    return (
+        "coalesce(b.baseline_status, case when b.approved then 'APPROVED' else 'DRAFT' end)"
+        if _column_exists_roi("roi_task_baseline", "baseline_status")
+        else "case when b.approved then 'APPROVED' else 'DRAFT' end"
+    )
 
 
 def _column_exists_roi(table: str, column: str) -> bool:
@@ -507,9 +510,13 @@ def list_roi_tasks(
     if status:
         where += " and t.status = %(status)s"
         params["status"] = status
+
     join_framework = ""
     if framework_id:
-        join_framework = " join roi.roi_task_framework tf on tf.task_id=t.id and tf.framework_id=%(framework_id)s and tf.active_to is null"
+        join_framework = (
+            " join roi.roi_task_framework tf on tf.task_id=t.id "
+            "and tf.framework_id=%(framework_id)s and tf.active_to is null"
+        )
         params["framework_id"] = framework_id
 
     rows = fetch_all(
@@ -520,7 +527,7 @@ def list_roi_tasks(
                b.monthly_volume,
                b.cost_per_hour_brl,
                b.confidence_level,
-               { _baseline_status_sql_expr() } as baseline_status,
+               {_baseline_status_sql_expr()} as baseline_status,
                b.approved as baseline_approved
         from roi.roi_task t
         {join_framework}
@@ -545,16 +552,35 @@ def create_roi_task(payload: dict, customer_ctx: dict, user_id: str | None = Non
         project_id = projects[0].get("id") if projects else None
     if not project_id:
         return {"ok": False, "error": "missing_project_id"}
+
     rows = execute_returning(
         """
-        insert into roi.roi_task(customer_id, project_id, code, name, description, area_id, process_name, owner_id, status, created_by, updated_by)
-        values(%(customer_id)s, %(project_id)s, %(code)s, %(name)s, %(description)s, %(area_id)s, %(process_name)s, %(owner_id)s, coalesce(%(status)s,'DRAFT'), %(user_id)s, %(user_id)s)
+        insert into roi.roi_task(
+            customer_id, project_id, code, name, description, area_id,
+            process_name, owner_id, status, created_by, updated_by
+        ) values(
+            %(customer_id)s, %(project_id)s, %(code)s, %(name)s, %(description)s,
+            %(area_id)s, %(process_name)s, %(owner_id)s,
+            coalesce(%(status)s,'DRAFT'), %(user_id)s, %(user_id)s
+        )
         returning *
         """,
-        {"customer_id": customer_ctx.get("customer_id"), "project_id": project_id, "code": payload.get("code"), "name": payload.get("name"), "description": payload.get("description"), "area_id": payload.get("area_id"), "process_name": payload.get("process_name"), "owner_id": payload.get("owner_id"), "status": payload.get("status"), "user_id": user_id},
+        {
+            "customer_id": customer_ctx.get("customer_id"),
+            "project_id": project_id,
+            "code": payload.get("code"),
+            "name": payload.get("name"),
+            "description": payload.get("description"),
+            "area_id": payload.get("area_id"),
+            "process_name": payload.get("process_name"),
+            "owner_id": payload.get("owner_id"),
+            "status": payload.get("status"),
+            "user_id": user_id,
+        },
     )
     item = _json_safe(rows[0]) if rows else None
-    _audit("roi_task", item["id"], "CREATE", None, item, user_id, customer_ctx.get("customer_id")) if item else None
+    if item:
+        _audit("roi_task", item["id"], "CREATE", None, item, user_id, customer_ctx.get("customer_id"))
     return {"ok": True, "item": item}
 
 
@@ -628,20 +654,38 @@ def save_task_baseline(task_id: str, payload: dict, project_keys: list[str] | No
             evidence_required, approved, baseline_status, created_by
         ) values(
             %(task_id)s, %(avg_manual_time_min)s, %(monthly_volume)s, %(cost_per_hour_brl)s,
-            %(manual_sla_hours)s, %(manual_error_rate)s, coalesce(%(baseline_date)s, current_date), %(confidence_level)s,
+            %(manual_sla_hours)s, %(manual_error_rate)s,
+            coalesce(%(baseline_date)s, current_date), %(confidence_level)s,
             %(evidence_required)s, %(approved)s, %(baseline_status)s, %(user_id)s
         )
         returning *
         """,
-        {"task_id": task_id, "avg_manual_time_min": _safe_float(payload.get("avg_manual_time_min")), "monthly_volume": _safe_float(payload.get("monthly_volume")), "cost_per_hour_brl": _safe_float(payload.get("cost_per_hour_brl", payload.get("cost_per_hour", 0))), "manual_sla_hours": _safe_float(payload.get("manual_sla_hours")), "manual_error_rate": _safe_float(payload.get("manual_error_rate")), "baseline_date": payload.get("baseline_date"), "confidence_level": payload.get("confidence_level") or "MEDIUM", "evidence_required": bool(payload.get("evidence_required", True)), "approved": approved, "baseline_status": status, "user_id": user_id},
+        {
+            "task_id": task_id,
+            "avg_manual_time_min": _safe_float(payload.get("avg_manual_time_min")),
+            "monthly_volume": _safe_float(payload.get("monthly_volume")),
+            "cost_per_hour_brl": _safe_float(payload.get("cost_per_hour_brl", payload.get("cost_per_hour", 0))),
+            "manual_sla_hours": _safe_float(payload.get("manual_sla_hours")),
+            "manual_error_rate": _safe_float(payload.get("manual_error_rate")),
+            "baseline_date": payload.get("baseline_date"),
+            "confidence_level": payload.get("confidence_level") or "MEDIUM",
+            "evidence_required": bool(payload.get("evidence_required", True)),
+            "approved": approved,
+            "baseline_status": status,
+            "user_id": user_id,
+        },
     )
     item = _json_safe(rows[0]) if rows else None
-    _audit("roi_task_baseline", item["id"], "CREATE", None, item, user_id, task.get("customer_id")) if item else None
+    if item:
+        _audit("roi_task_baseline", item["id"], "CREATE", None, item, user_id, task.get("customer_id"))
     return {"ok": True, "item": item}
 
 
 def _latest_baseline(task_id: str) -> dict | None:
-    return fetch_one("select * from roi.roi_task_baseline where task_id=%(task_id)s order by created_at desc limit 1", {"task_id": task_id})
+    return fetch_one(
+        "select * from roi.roi_task_baseline where task_id=%(task_id)s order by created_at desc limit 1",
+        {"task_id": task_id},
+    )
 
 
 def approve_task_baseline(task_id: str, project_keys: list[str] | None, user_id: str | None = None) -> dict:
@@ -652,7 +696,10 @@ def approve_task_baseline(task_id: str, project_keys: list[str] | None, user_id:
     if not baseline:
         return {"ok": False, "error": "baseline_not_found"}
     if bool(baseline.get("evidence_required")):
-        ev = fetch_one("select 1 from roi.roi_evidence where entity_type='ROI_TASK_BASELINE' and entity_id=%(id)s limit 1", {"id": baseline["id"]})
+        ev = fetch_one(
+            "select 1 from roi.roi_evidence where entity_type='ROI_TASK_BASELINE' and entity_id=%(id)s limit 1",
+            {"id": baseline["id"]},
+        )
         if not ev:
             return {"ok": False, "error": "evidence_required"}
     rows = execute_returning(
@@ -679,11 +726,16 @@ def reject_task_baseline(task_id: str, payload: dict, project_keys: list[str] | 
     rows = execute_returning(
         """
         update roi.roi_task_baseline
-           set approved=false, baseline_status='REJECTED', rejected_by=%(user_id)s, rejected_at=now(), rejection_reason=%(reason)s
+           set approved=false, baseline_status='REJECTED', rejected_by=%(user_id)s,
+               rejected_at=now(), rejection_reason=%(reason)s
          where id=%(baseline_id)s
          returning *
         """,
-        {"baseline_id": baseline["id"], "user_id": user_id, "reason": payload.get("reason") or payload.get("rejection_reason")},
+        {
+            "baseline_id": baseline["id"],
+            "user_id": user_id,
+            "reason": payload.get("reason") or payload.get("rejection_reason"),
+        },
     )
     item = _json_safe(rows[0]) if rows else None
     _audit("roi_task_baseline", baseline["id"], "REJECT", baseline, item, user_id, task.get("customer_id"))
@@ -735,25 +787,43 @@ def create_task_framework_link(task_id: str, payload: dict, project_keys: list[s
     framework_id = payload.get("framework_id") or payload.get("configuration_id")
     if not framework_id:
         return {"ok": False, "error": "missing_framework_id"}
-    framework = fetch_one("select * from roi.roi_configuration where id=%(id)s and status='PUBLISHED'", {"id": framework_id})
+    framework = fetch_one(
+        "select * from roi.roi_configuration where id=%(id)s and status='PUBLISHED'",
+        {"id": framework_id},
+    )
     if not framework:
         return {"ok": False, "error": "published_framework_required"}
     version = payload.get("framework_version")
     if version is None:
-        vr = fetch_one("select max(version) as version from roi.roi_configuration_version where configuration_id=%(id)s", {"id": framework_id}) or {"version": None}
+        vr = fetch_one(
+            "select max(version) as version from roi.roi_configuration_version where configuration_id=%(id)s",
+            {"id": framework_id},
+        ) or {"version": None}
         version = vr.get("version")
     if version is None:
         return {"ok": False, "error": "published_framework_version_required"}
     rows = execute_returning(
         """
-        insert into roi.roi_task_framework(task_id, framework_id, framework_version, active_from, active_to, created_by)
-        values(%(task_id)s, %(framework_id)s, %(framework_version)s, coalesce(%(active_from)s::date, current_date), %(active_to)s::date, %(user_id)s)
+        insert into roi.roi_task_framework(
+            task_id, framework_id, framework_version, active_from, active_to, created_by
+        ) values(
+            %(task_id)s, %(framework_id)s, %(framework_version)s,
+            coalesce(%(active_from)s::date, current_date), %(active_to)s::date, %(user_id)s
+        )
         returning *
         """,
-        {"task_id": task_id, "framework_id": framework_id, "framework_version": int(version), "active_from": payload.get("active_from"), "active_to": payload.get("active_to"), "user_id": user_id},
+        {
+            "task_id": task_id,
+            "framework_id": framework_id,
+            "framework_version": int(version),
+            "active_from": payload.get("active_from"),
+            "active_to": payload.get("active_to"),
+            "user_id": user_id,
+        },
     )
     item = _json_safe(rows[0]) if rows else None
-    _audit("roi_task_framework", item["id"], "CREATE", None, item, user_id, task.get("customer_id")) if item else None
+    if item:
+        _audit("roi_task_framework", item["id"], "CREATE", None, item, user_id, task.get("customer_id"))
     return {"ok": True, "item": item}
 
 
@@ -774,7 +844,8 @@ def deactivate_task_framework_link(link_id: str, payload: dict, project_keys: li
     rows = execute_returning(
         """
         update roi.roi_task_framework
-           set active_to = coalesce(%(active_to)s::date, current_date), deactivated_by=%(user_id)s, deactivated_at=now()
+           set active_to=coalesce(%(active_to)s::date,current_date),
+               deactivated_by=%(user_id)s, deactivated_at=now()
          where id=%(id)s
          returning *
         """,
@@ -796,7 +867,7 @@ def list_roi_evidences(project_keys: list[str] | None = None, entity_type: str |
     if entity_id:
         clauses.append("e.entity_id=%(entity_id)s")
         params["entity_id"] = entity_id
-    # Quando for evidência de tarefa/baseline, garante escopo por projeto.
+
     join_sql = ""
     if project_keys is not None:
         params["project_keys"] = project_keys
@@ -806,10 +877,17 @@ def list_roi_evidences(project_keys: list[str] | None = None, entity_type: str |
             join_sql = """
             left join roi.roi_task t on (
                 (e.entity_type='ROI_TASK' and e.entity_id=t.id)
-                or (e.entity_type='ROI_TASK_BASELINE' and exists (select 1 from roi.roi_task_baseline b where b.id=e.entity_id and b.task_id=t.id))
+                or (
+                    e.entity_type='ROI_TASK_BASELINE'
+                    and exists (
+                        select 1 from roi.roi_task_baseline b
+                        where b.id=e.entity_id and b.task_id=t.id
+                    )
+                )
             )
             """
             clauses.append("(t.project_id = any(%(project_keys)s) or e.entity_type not in ('ROI_TASK','ROI_TASK_BASELINE'))")
+
     rows = fetch_all(
         f"""
         select e.*
@@ -830,14 +908,31 @@ def create_roi_evidence(payload: dict, customer_ctx: dict, user_id: str | None =
         return {"ok": False, "error": "missing_entity_type_or_entity_id"}
     rows = execute_returning(
         """
-        insert into roi.roi_evidence(customer_id, entity_type, entity_id, file_url, source_url, source_type, description, pii_masked, uploaded_by)
-        values(%(customer_id)s, %(entity_type)s, %(entity_id)s, %(file_url)s, %(source_url)s, %(source_type)s, %(description)s, coalesce(%(pii_masked)s,true), %(user_id)s)
+        insert into roi.roi_evidence(
+            customer_id, entity_type, entity_id, file_url, source_url,
+            source_type, description, pii_masked, uploaded_by
+        ) values(
+            %(customer_id)s, %(entity_type)s, %(entity_id)s, %(file_url)s,
+            %(source_url)s, %(source_type)s, %(description)s,
+            coalesce(%(pii_masked)s,true), %(user_id)s
+        )
         returning *
         """,
-        {"customer_id": customer_ctx.get("customer_id"), "entity_type": entity_type, "entity_id": entity_id, "file_url": payload.get("file_url"), "source_url": payload.get("source_url"), "source_type": payload.get("source_type"), "description": payload.get("description"), "pii_masked": payload.get("pii_masked"), "user_id": user_id},
+        {
+            "customer_id": customer_ctx.get("customer_id"),
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "file_url": payload.get("file_url"),
+            "source_url": payload.get("source_url"),
+            "source_type": payload.get("source_type"),
+            "description": payload.get("description"),
+            "pii_masked": payload.get("pii_masked"),
+            "user_id": user_id,
+        },
     )
     item = _json_safe(rows[0]) if rows else None
-    _audit("roi_evidence", item["id"], "CREATE", None, item, user_id, customer_ctx.get("customer_id")) if item else None
+    if item:
+        _audit("roi_evidence", item["id"], "CREATE", None, item, user_id, customer_ctx.get("customer_id"))
     return {"ok": True, "item": item}
 
 
@@ -860,7 +955,9 @@ def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: s
     task_id = payload.get("task_id")
     if not task_id:
         return {"ok": False, "error": "missing_task_id"}
-    task = _task_exists(task_id, project_keys)
+    where, params = _scope_filter_sql("t", project_keys)
+    params["id"] = task_id
+    task = fetch_one(f"select * from roi.roi_task t where t.id=%(id)s and {where}", params)
     if not task:
         return {"ok": False, "error": "task_not_found"}
     rows = execute_returning(
@@ -872,6 +969,7 @@ def create_roi_mapping(payload: dict, project_keys: list[str] | None, user_id: s
         {"task_id": task_id, "agent_id": payload.get("agent_id"), "agent_name": payload.get("agent_name"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"), "coverage_pct": _safe_percent(payload.get("coverage_pct", 100), 100.0), "human_review_pct": _safe_percent(payload.get("human_review_pct", 0), 0.0), "execution_mode": payload.get("execution_mode"), "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id},
     )
     return {"ok": True, "item": _json_safe(rows[0]) if rows else None}
+
 
 # -----------------------------------------------------------------------------
 # Dashboard / results
@@ -925,3 +1023,287 @@ def _audit(entity_type: str, entity_id: str, event_type: str, before: Any, after
         )
     except Exception as e:
         print(f"[ROI][WARN] audit failed: {e}")
+
+# =============================================================================
+# ROI TO-BE compatibility layer (v3)
+# =============================================================================
+
+def _user_context(user_id: str | None) -> dict:
+    """Best-effort user lookup. Does not assume a specific role/area schema."""
+    if not user_id:
+        return {"id": None, "is_admin": False, "area_id": None, "active": False}
+    user = fetch_one('select * from public."User" where id=%(id)s limit 1', {"id": user_id}) or {}
+    # Compatibility with common columns. Header-based admin is handled in app.py.
+    role = str(user.get("role") or user.get("profile") or user.get("type") or "").upper()
+    is_admin = role in {"ADMIN", "ADMINISTRATOR", "SUPERADMIN"} or bool(user.get("is_admin") or False)
+    area_id = user.get("area_id") or user.get("areaId") or user.get("business_area_id")
+    active = not bool(user.get("deleted") or False)
+    return {"id": user_id, "is_admin": is_admin, "area_id": area_id, "active": active, "raw": _json_safe(user)}
+
+
+def list_roi_methods(project_keys: list[str] | None = None, published_only: bool = True) -> dict:
+    if not table_exists("roi", "roi_method"):
+        # Fallback to the current configuration model while migration is not applied.
+        status = "PUBLISHED" if published_only else None
+        legacy = list_roi_configurations(project_keys=project_keys, status=status)
+        items = []
+        for c in legacy.get("items", []):
+            items.append({
+                "id": c.get("id"), "code": str(c.get("calculation_method") or "business_result").upper(),
+                "name": c.get("name"), "description": c.get("description"),
+                "status": str(c.get("status") or "DRAFT").lower(), "legacy": True,
+            })
+        return {"items": items, "total": len(items), "compatibility_mode": True}
+    clauses = ["1=1"]
+    params: dict[str, Any] = {}
+    if published_only:
+        clauses.append("m.status='published'")
+    rows = fetch_all(f"""
+        select m.*, v.id as current_version_id, v.version_number, v.formula_key,
+               v.status as version_status, v.published_at
+          from roi.roi_method m
+          left join lateral (
+              select * from roi.roi_method_version v
+               where v.roi_method_id=m.id
+                 and (%(published_only)s=false or v.status='published')
+               order by v.version_number desc limit 1
+          ) v on true
+         where {' and '.join(clauses)}
+         order by m.name
+    """, {"published_only": published_only, **params})
+    return {"items": _json_safe(rows), "total": len(rows), "compatibility_mode": False}
+
+
+def get_roi_method_parameters(version_id: str, editable_by: str | None = None) -> dict:
+    if not table_exists("roi", "roi_method_parameter"):
+        return {"items": [], "total": 0, "compatibility_mode": True}
+    params: dict[str, Any] = {"version_id": version_id}
+    where = "p.roi_method_version_id=%(version_id)s"
+    if editable_by:
+        where += " and p.editable_by in (%(editable_by)s,'BOTH','SYSTEM')"
+        params["editable_by"] = editable_by.upper()
+    rows = fetch_all(f"""
+        select p.* from roi.roi_method_parameter p
+         where {where}
+         order by p.scope, p.display_order, p.label
+    """, params)
+    return {"items": _json_safe(rows), "total": len(rows)}
+
+
+def create_task_process(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    code = str(payload.get("code") or "").strip().upper()
+    if not code:
+        n = fetch_one("select count(*)::int+1 as n from roi.roi_task_process where task_id=%(task_id)s", {"task_id": task_id}) or {"n": 1}
+        code = f"P{int(n['n']):03d}"
+    rows = execute_returning("""
+        insert into roi.roi_task_process(task_id, code, name, description, order_index, status, created_by, updated_by)
+        values(%(task_id)s,%(code)s,%(name)s,%(description)s,%(order_index)s,coalesce(%(status)s,'active'),%(user_id)s,%(user_id)s)
+        returning *
+    """, {"task_id": task_id, "code": code, "name": payload.get("name") or "Principal", "description": payload.get("description"),
+          "order_index": _safe_int(payload.get("order_index"), 0), "status": payload.get("status"), "user_id": user_id})
+    item = _json_safe(rows[0]) if rows else None
+    if item: _audit("roi_task_process", item["id"], "CREATE", None, item, user_id, task.get("customer_id"))
+    return {"ok": bool(item), "item": item}
+
+
+def list_task_processes(task_id: str, project_keys: list[str] | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found", "items": [], "total": 0}
+    rows = fetch_all("""
+        select p.*,
+               (select count(*) from roi.task_process_automation a where a.task_process_id=p.id and a.status='active')::int as automation_count
+          from roi.roi_task_process p
+         where p.task_id=%(task_id)s
+         order by p.order_index, p.created_at
+    """, {"task_id": task_id})
+    return {"ok": True, "items": _json_safe(rows), "total": len(rows)}
+
+
+def create_task_roi(task_id: str, payload: dict, project_keys: list[str] | None, user_id: str | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    version_id = payload.get("roi_method_version_id") or payload.get("method_version_id")
+    if not version_id:
+        return {"ok": False, "error": "missing_roi_method_version_id"}
+    active = fetch_one("select id from roi.task_roi where task_id=%(task_id)s and active_to is null and status not in ('inactive','archived') limit 1", {"task_id": task_id})
+    if active:
+        return {"ok": False, "error": "active_task_roi_already_exists", "task_roi_id": active["id"]}
+    rows = execute_returning("""
+        insert into roi.task_roi(task_id, roi_method_version_id, status, active_from, created_by)
+        values(%(task_id)s,%(version_id)s,coalesce(%(status)s,'draft'),coalesce(%(active_from)s::date,current_date),%(user_id)s)
+        returning *
+    """, {"task_id": task_id, "version_id": version_id, "status": payload.get("status"), "active_from": payload.get("active_from"), "user_id": user_id})
+    item = _json_safe(rows[0]) if rows else None
+    # Always guarantee a default process for compatibility.
+    if item:
+        existing = fetch_one("select id from roi.roi_task_process where task_id=%(task_id)s limit 1", {"task_id": task_id})
+        if not existing:
+            create_task_process(task_id, {"code": "MAIN", "name": "Principal", "order_index": 0}, project_keys, user_id)
+        _audit("task_roi", item["id"], "CREATE", None, item, user_id, task.get("customer_id"))
+    return {"ok": bool(item), "item": item}
+
+
+def get_task_roi(task_id: str, project_keys: list[str] | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found"}
+    row = fetch_one("""
+        select tr.*, m.code as method_code, m.name as method_name, v.version_number, v.formula_key
+          from roi.task_roi tr
+          join roi.roi_method_version v on v.id=tr.roi_method_version_id
+          join roi.roi_method m on m.id=v.roi_method_id
+         where tr.task_id=%(task_id)s and tr.active_to is null
+         order by tr.created_at desc limit 1
+    """, {"task_id": task_id})
+    if not row:
+        return {"ok": True, "item": None}
+    vals = fetch_all("select * from roi.task_roi_parameter_value where task_roi_id=%(id)s order by created_at", {"id": row["id"]})
+    return {"ok": True, "item": _json_safe(row), "parameter_values": _json_safe(vals)}
+
+
+def save_task_roi_values(payload: dict, user_id: str | None = None, is_admin: bool = False) -> dict:
+    task_roi_id = payload.get("task_roi_id")
+    values = payload.get("values") or []
+    if not task_roi_id or not isinstance(values, list):
+        return {"ok": False, "error": "missing_task_roi_id_or_values"}
+    tr = fetch_one("select tr.*, t.customer_id from roi.task_roi tr join roi.roi_task t on t.id=tr.task_id where tr.id=%(id)s", {"id": task_roi_id})
+    if not tr:
+        return {"ok": False, "error": "task_roi_not_found"}
+    saved = []
+    for entry in values:
+        param_id = entry.get("roi_method_parameter_id") or entry.get("parameter_id")
+        param = fetch_one("select * from roi.roi_method_parameter where id=%(id)s", {"id": param_id}) if param_id else None
+        if not param:
+            return {"ok": False, "error": "parameter_not_found", "parameter_id": param_id}
+        editable = str(param.get("editable_by") or "BOTH").upper()
+        if editable == "ADMIN" and not is_admin:
+            return {"ok": False, "error": "admin_required_for_parameter", "parameter_key": param.get("parameter_key")}
+        value = entry.get("value")
+        data_type = str(param.get("data_type") or "text").lower()
+        cols = {"value_numeric": None, "value_text": None, "value_boolean": None, "value_json": None}
+        if data_type in {"numeric", "number", "currency", "integer"}: cols["value_numeric"] = _safe_float(value)
+        elif data_type == "boolean": cols["value_boolean"] = bool(value)
+        elif data_type in {"json", "object", "array"}: cols["value_json"] = _json_dumps(value)
+        else: cols["value_text"] = None if value is None else str(value)
+        rows = execute_returning("""
+            insert into roi.task_roi_parameter_value(
+                task_roi_id, task_process_id, automation_id, participant_id,
+                roi_method_parameter_id, parameter_key, value_numeric, value_text, value_boolean, value_json, filled_by
+            ) values(
+                %(task_roi_id)s,%(task_process_id)s,%(automation_id)s,%(participant_id)s,
+                %(param_id)s,%(parameter_key)s,%(value_numeric)s,%(value_text)s,%(value_boolean)s,%(value_json)s::jsonb,%(user_id)s
+            )
+            on conflict (task_roi_id, scope_key, roi_method_parameter_id)
+            do update set value_numeric=excluded.value_numeric, value_text=excluded.value_text,
+                          value_boolean=excluded.value_boolean, value_json=excluded.value_json,
+                          filled_by=excluded.filled_by, updated_at=now()
+            returning *
+        """, {"task_roi_id": task_roi_id, "task_process_id": entry.get("task_process_id"), "automation_id": entry.get("automation_id"),
+              "participant_id": entry.get("participant_id"), "param_id": param_id, "parameter_key": param.get("parameter_key"),
+              **cols, "user_id": user_id})
+        if rows: saved.append(_json_safe(rows[0]))
+    return {"ok": True, "items": saved, "total": len(saved)}
+
+
+def create_process_automation(payload: dict, user_id: str | None = None, is_admin: bool = False) -> dict:
+    if not is_admin:
+        return {"ok": False, "error": "admin_required"}
+    process_id = payload.get("task_process_id")
+    if not process_id:
+        return {"ok": False, "error": "missing_task_process_id"}
+    rows = execute_returning("""
+        insert into roi.task_process_automation(task_process_id,name,execution_mode,channel,status,active_from,active_to,created_by,updated_by)
+        values(%(task_process_id)s,%(name)s,%(execution_mode)s,%(channel)s,coalesce(%(status)s,'active'),coalesce(%(active_from)s::date,current_date),%(active_to)s::date,%(user_id)s,%(user_id)s)
+        returning *
+    """, {"task_process_id": process_id, "name": payload.get("name") or "Automação", "execution_mode": payload.get("execution_mode"),
+          "channel": payload.get("channel"), "status": payload.get("status"), "active_from": payload.get("active_from"),
+          "active_to": payload.get("active_to"), "user_id": user_id})
+    item = _json_safe(rows[0]) if rows else None
+    return {"ok": bool(item), "item": item}
+
+
+def add_automation_participant(automation_id: str, payload: dict, user_id: str | None = None, is_admin: bool = False) -> dict:
+    if not is_admin:
+        return {"ok": False, "error": "admin_required"}
+    rows = execute_returning("""
+        insert into roi.task_process_automation_participant(
+            automation_id,agent_id,workflow_id,dag_id,agent_name_snapshot,workflow_name_snapshot,dag_name_snapshot,role,order_index,status,created_by
+        ) values(%(automation_id)s,%(agent_id)s,%(workflow_id)s,%(dag_id)s,%(agent_name)s,%(workflow_name)s,%(dag_name)s,%(role)s,%(order_index)s,coalesce(%(status)s,'active'),%(user_id)s)
+        returning *
+    """, {"automation_id": automation_id, "agent_id": payload.get("agent_id"), "workflow_id": payload.get("workflow_id"), "dag_id": payload.get("dag_id"),
+          "agent_name": payload.get("agent_name") or payload.get("agent_name_snapshot"), "workflow_name": payload.get("workflow_name") or payload.get("workflow_name_snapshot"),
+          "dag_name": payload.get("dag_name") or payload.get("dag_name_snapshot"), "role": payload.get("role"), "order_index": _safe_int(payload.get("order_index"), 0),
+          "status": payload.get("status"), "user_id": user_id})
+    item = _json_safe(rows[0]) if rows else None
+    return {"ok": bool(item), "item": item}
+
+
+def list_process_automations(task_id: str, project_keys: list[str] | None = None) -> dict:
+    task = _task_exists(task_id, project_keys)
+    if not task:
+        return {"ok": False, "error": "task_not_found", "items": [], "total": 0}
+    rows = fetch_all("""
+        select a.*, p.name as process_name,
+               coalesce(jsonb_agg(to_jsonb(ap) order by ap.order_index) filter (where ap.id is not null),'[]'::jsonb) participants
+          from roi.task_process_automation a
+          join roi.roi_task_process p on p.id=a.task_process_id
+          left join roi.task_process_automation_participant ap on ap.automation_id=a.id
+         where p.task_id=%(task_id)s
+         group by a.id,p.name
+         order by p.order_index,a.created_at
+    """, {"task_id": task_id})
+    return {"ok": True, "items": _json_safe(rows), "total": len(rows)}
+
+
+def calculate_task_roi(task_roi_id: str, payload: dict, user_id: str | None = None) -> dict:
+    tr = fetch_one("""
+        select tr.*, t.customer_id,t.project_id,t.owner_id,t.owner_area_id,m.code as method_code,v.version_number,v.formula_key
+          from roi.task_roi tr join roi.roi_task t on t.id=tr.task_id
+          join roi.roi_method_version v on v.id=tr.roi_method_version_id
+          join roi.roi_method m on m.id=v.roi_method_id
+         where tr.id=%(id)s
+    """, {"id": task_roi_id})
+    if not tr:
+        return {"ok": False, "error": "task_roi_not_found"}
+    params = fetch_all("select * from roi.task_roi_parameter_value where task_roi_id=%(id)s", {"id": task_roi_id})
+    flat: dict[str, Any] = {}
+    for v in params:
+        val = v.get("value_numeric")
+        if val is None: val = v.get("value_boolean")
+        if val is None: val = v.get("value_text")
+        if val is None: val = v.get("value_json")
+        # Consolidated calculation uses TASK_ROI/Principal values; detailed items preserve scope.
+        flat[v.get("parameter_key")] = val
+    flat.update(payload.get("overrides") or {})
+    flat["calculation_method"] = str(tr.get("method_code") or tr.get("formula_key") or "business_result").lower()
+    simulation = simulate_roi(flat)
+    snapshot = {"task_roi": tr, "parameters": params, "inputs": flat, "simulation": simulation}
+    period_start = payload.get("period_start") or date.today().replace(day=1).isoformat()
+    period_end = payload.get("period_end") or date.today().isoformat()
+    rows = execute_returning("""
+        insert into roi.task_roi_calculation_result(
+          task_roi_id,period_start,period_end,gross_benefit_brl,automation_cost_brl,net_savings_brl,roi_pct,payback_months,calculation_snapshot_json,calculated_by
+        ) values(%(task_roi_id)s,%(period_start)s::date,%(period_end)s::date,%(gross)s,%(cost)s,%(net)s,%(roi)s,%(payback)s,%(snapshot)s::jsonb,%(user_id)s)
+        returning *
+    """, {"task_roi_id": task_roi_id, "period_start": period_start, "period_end": period_end,
+          "gross": simulation.get("gross_savings_after_review_brl", simulation.get("gross_savings_brl", 0)), "cost": simulation.get("ai_cost_brl", 0),
+          "net": simulation.get("net_savings_brl", 0), "roi": simulation.get("roi_pct", 0), "payback": simulation.get("payback_months"),
+          "snapshot": _json_dumps(snapshot), "user_id": user_id})
+    item = _json_safe(rows[0]) if rows else None
+    # Legacy shadow write keeps current dashboard/front alive.
+    if item:
+        execute("""
+            insert into roi.roi_calculation_result(customer_id,project_id,task_id,entity_type,entity_id,period_start,period_end,
+                gross_savings_brl,ai_cost_brl,net_savings_brl,roi_pct,payback_months,calculation_snapshot_json,calculated_by)
+            values(%(customer_id)s,%(project_id)s,%(task_id)s,'TASK_ROI',%(task_roi_id)s,%(period_start)s::date,%(period_end)s::date,
+                %(gross)s,%(cost)s,%(net)s,%(roi)s,%(payback)s,%(snapshot)s::jsonb,%(user_id)s)
+        """, {"customer_id": tr.get("customer_id"), "project_id": tr.get("project_id"), "task_id": tr.get("task_id"), "task_roi_id": task_roi_id,
+              "period_start": period_start, "period_end": period_end, "gross": simulation.get("gross_savings_after_review_brl", simulation.get("gross_savings_brl", 0)),
+              "cost": simulation.get("ai_cost_brl", 0), "net": simulation.get("net_savings_brl", 0), "roi": simulation.get("roi_pct", 0),
+              "payback": simulation.get("payback_months"), "snapshot": _json_dumps(snapshot), "user_id": user_id})
+    return {"ok": bool(item), "item": item, "simulation": simulation, "snapshot": _json_safe(snapshot)}

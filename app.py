@@ -21,6 +21,9 @@ from roi_provider import (
     list_roi_evidences, create_roi_evidence,
     list_task_framework_links, create_task_framework_link, deactivate_task_framework_link,
     list_roi_mappings, create_roi_mapping, executive_dashboard, task_result,
+    list_roi_methods, get_roi_method_parameters, create_task_process, list_task_processes,
+    create_task_roi, get_task_roi, save_task_roi_values, create_process_automation,
+    add_automation_participant, list_process_automations, calculate_task_roi,
 )
 from db import fetch_one, fetch_all
 
@@ -772,10 +775,11 @@ def swagger_docs():
 
 def get_connection():
     return psycopg2.connect(
-        host="192.168.230.108",
-        database="gabbi-io",
-        user="gabbi_io",
-        password="lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^",
+        host=os.getenv("DB_HOST", "192.168.230.108"),
+        port=os.getenv("DB_PORT", "5432"),
+        database=os.getenv("DB_NAME", "gabbi-io"),
+        user=os.getenv("DB_USER", "gabbi_io"),
+        password=os.getenv("DB_PASSWORD"),
     )
 
 def _state():
@@ -1097,6 +1101,13 @@ def _current_user_id() -> str | None:
     return session.get("user_id") or request.headers.get("X-User-Id") or request.headers.get("userId")
 
 
+def _current_user_is_admin() -> bool:
+    raw = (request.headers.get("X-User-Role") or request.headers.get("X-Profile") or "").upper()
+    if raw in {"ADMIN", "ADMINISTRATOR", "SUPERADMIN"}:
+        return True
+    return bool(session.get("is_admin") or False)
+
+
 @app.route("/api/roi/calculation-methods", methods=["GET"])
 def api_roi_calculation_methods():
     return safe_jsonify(_roi_calculation_methods())
@@ -1253,6 +1264,73 @@ def api_roi_evidences_create():
 def api_roi_task_results(task_id: str):
     out = task_result(task_id, project_keys=_effective_project_keys())
     return safe_jsonify(out, 200 if out.get("ok") else 404)
+
+
+# ---------------- ROI TO-BE v3 (additive / backward compatible) ----------------
+
+@app.route("/api/roi/methods", methods=["GET"])
+def api_roi_methods_list():
+    published_only = request.args.get("published_only", "true").lower() not in ("0", "false", "no")
+    return safe_jsonify(list_roi_methods(project_keys=_effective_project_keys(), published_only=published_only))
+
+
+@app.route("/api/roi/method-versions/<version_id>/parameters", methods=["GET"])
+def api_roi_method_parameters(version_id: str):
+    editable_by = request.args.get("editable_by") or None
+    return safe_jsonify(get_roi_method_parameters(version_id, editable_by=editable_by))
+
+
+@app.route("/api/roi/tasks/<task_id>/processes", methods=["GET"])
+def api_roi_task_processes_list(task_id: str):
+    return safe_jsonify(list_task_processes(task_id, project_keys=_effective_project_keys()))
+
+
+@app.route("/api/roi/tasks/<task_id>/processes", methods=["POST"])
+def api_roi_task_processes_create(task_id: str):
+    out = create_task_process(task_id, request.get_json(silent=True) or {}, _effective_project_keys(), _current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/roi", methods=["GET"])
+def api_roi_task_roi_get(task_id: str):
+    out = get_task_roi(task_id, project_keys=_effective_project_keys())
+    return safe_jsonify(out, 200 if out.get("ok") else 404)
+
+
+@app.route("/api/roi/tasks/<task_id>/roi", methods=["POST"])
+def api_roi_task_roi_create(task_id: str):
+    out = create_task_roi(task_id, request.get_json(silent=True) or {}, _effective_project_keys(), _current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
+
+
+@app.route("/api/roi/task-roi-values", methods=["POST"])
+def api_roi_task_values_save():
+    out = save_task_roi_values(request.get_json(silent=True) or {}, _current_user_id(), _current_user_is_admin())
+    return safe_jsonify(out, 200 if out.get("ok") else 403 if out.get("error", "").startswith("admin_required") else 400)
+
+
+@app.route("/api/roi/admin/task-process-automations", methods=["POST"])
+def api_roi_process_automation_create():
+    out = create_process_automation(request.get_json(silent=True) or {}, _current_user_id(), _current_user_is_admin())
+    return safe_jsonify(out, 200 if out.get("ok") else 403 if out.get("error") == "admin_required" else 400)
+
+
+@app.route("/api/roi/admin/task-process-automations/<automation_id>/participants", methods=["POST"])
+def api_roi_process_automation_participant_create(automation_id: str):
+    out = add_automation_participant(automation_id, request.get_json(silent=True) or {}, _current_user_id(), _current_user_is_admin())
+    return safe_jsonify(out, 200 if out.get("ok") else 403 if out.get("error") == "admin_required" else 400)
+
+
+@app.route("/api/roi/tasks/<task_id>/automations", methods=["GET"])
+def api_roi_task_automations_list(task_id: str):
+    out = list_process_automations(task_id, project_keys=_effective_project_keys())
+    return safe_jsonify(out, 200 if out.get("ok") else 404)
+
+
+@app.route("/api/roi/task-roi/<task_roi_id>/calculate", methods=["POST"])
+def api_roi_task_calculate(task_roi_id: str):
+    out = calculate_task_roi(task_roi_id, request.get_json(silent=True) or {}, _current_user_id())
+    return safe_jsonify(out, 200 if out.get("ok") else 400)
 
 
 @app.route("/api/roi/mappings", methods=["GET"])
