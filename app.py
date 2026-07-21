@@ -779,7 +779,7 @@ def get_connection():
         port=os.getenv("DB_PORT", "5432"),
         database=os.getenv("DB_NAME", "gabbi-io"),
         user=os.getenv("DB_USER", "gabbi_io"),
-        password=os.getenv("DB_PASSWORD"),
+        password=os.getenv("DB_PASSWORD","lrc2An*gvNP%00SkW%bY5cFLQV6S0o5v7^"),
     )
 
 def _state():
